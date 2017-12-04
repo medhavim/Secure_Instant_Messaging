@@ -4,7 +4,7 @@ import os
 import pickle
 import base64
 import time
-import ConfigParser
+#import ConfigParser
 import Crypto
 import Message
 
@@ -29,10 +29,10 @@ def get_local_ip():
 
 
 # ---------------------- Other specific utils -----------------------#
-def load_config(config_file):
-    config = ConfigParser.RawConfigParser()
-    config.read(config_file)
-    return config
+#def load_config(config_file):
+#    config = ConfigParser.RawConfigParser()
+#    config.read(config_file)
+#    return config
 
 
 def validate_timestamp(timestamp):
