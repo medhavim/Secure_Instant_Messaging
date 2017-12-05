@@ -10,13 +10,13 @@ import Message
 
 
 # ---------------------- Network related utils -----------------------#
-def get_free_port():
-    # get free port : creating a new socket (port is randomly assigned), and close it
-    sock = socket.socket()
-    sock.bind(('', 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return int(port)
+# def get_free_port():
+#     # get free port : creating a new socket (port is randomly assigned), and close it
+#     sock = socket.socket()
+#     sock.bind(('', 0))
+#     port = sock.getsockname()[1]
+#     sock.close()
+#     return int(port)
 
 
 # def get_local_ip():
@@ -35,12 +35,12 @@ def get_free_port():
 #    return config
 
 
-def validate_timestamp(timestamp):
-    cur_time = time.time()
-    if cur_time - float(timestamp) > Message.MAX_TIMESTAMP_GAP:
-        print 'Timestamp gap is too large, invalid message!'
-        return False
-    return True
+# def validate_timestamp(timestamp):
+#     cur_time = time.time()
+#     if cur_time - float(timestamp) > Message.MAX_TIMESTAMP_GAP:
+#         print 'Timestamp gap is too large, invalid message!'
+#         return False
+#     return True
 
 
 # ---------------------- String related utils -----------------------#
@@ -65,22 +65,22 @@ def generate_nonce(size=128):
     return nonce_num
 
 
-def generate_challenge():
-    challenge = generate_nonce()
-    trunc_challenge = challenge & 0x0000ffffffffffffffffffffffffffff
-    challenge_hash = Crypto.generate_hash(str(challenge))
-    return challenge, challenge_hash, trunc_challenge
+# def generate_challenge():
+#     challenge = generate_nonce()
+#     trunc_challenge = challenge & 0x0000ffffffffffffffffffffffffffff
+#     challenge_hash = Crypto.generate_hash(str(challenge))
+#     return challenge, challenge_hash, trunc_challenge
 
 
-def solve_challenge(trunc_challenge, challenge_hash):
-    trunc_challenge = long(trunc_challenge)
-    guessed_challenge = trunc_challenge
-    n = 0
-    while len(str(guessed_challenge)) <= 40:
-        guessed_challenge = str(trunc_challenge + (n << 112))
-        if Crypto.generate_hash(guessed_challenge) == challenge_hash:
-            return guessed_challenge
-        n += 1
+# def solve_challenge(trunc_challenge, challenge_hash):
+#     trunc_challenge = long(trunc_challenge)
+#     guessed_challenge = trunc_challenge
+#     n = 0
+#     while len(str(guessed_challenge)) <= 40:
+#         guessed_challenge = str(trunc_challenge + (n << 112))
+#         if Crypto.generate_hash(guessed_challenge) == challenge_hash:
+#             return guessed_challenge
+#         n += 1
 
 
 def generate_iv():

@@ -14,8 +14,8 @@ from Message import SEPARATOR, MessageType, AuthStartMsg, MAX_MSG_SIZE, SEPARATO
     ConnEndMsg, TextMsg, DisconnMsg
 
 MAX_RETRY_LOGIN_TIMES = 3
-CMD_PROMPT = '+> '
-MSG_PROMPT = '<- '
+CMD_PROMPT = '>> '
+MSG_PROMPT = '<< '
 
 
 class UserInfo:
@@ -50,7 +50,7 @@ class ChatClient(cmd.Cmd):
         self.shared_dh_key = None
         # chat client ip and port, used to receive messages
         self.client_ip = Crypto.get_local_ip()
-        self.client_port = Utils.get_free_port()
+        self.client_port = Crypto.get_free_port()
         # online-users known to the chatclient
         self.online_list = dict()
         # start socket for receiving messages
@@ -68,15 +68,15 @@ class ChatClient(cmd.Cmd):
             if logined:
                 self.user_name = user_name
                 client.prompt = self.user_name + CMD_PROMPT
-                client.cmdloop('###### User <' + user_name + '> successfully login')
+                client.cmdloop('<' + user_name + '> successfully logged in')
         if not logined:
-            print 'Your retry times has exceeded the maximum allowed times, exit the program!'
+            print 'Your login try has exceeded the maximum allowed times, exiting the program. Please try later!'
             self.recv_sock.close()
             os._exit(0)
 
     def _auth_to_server(self):
-        user_name = raw_input('Please input your user name: ')
-        password = getpass.getpass('Please input your password: ')
+        user_name = raw_input('Please enter your user name: ')
+        password = getpass.getpass('Please enter your password: ')
         login_result = False
         self.user_name = user_name
         try:
@@ -93,7 +93,7 @@ class ChatClient(cmd.Cmd):
             if auth_result and self._auth_end(c2_nonce):
                 login_result = True
         except socket.error:
-            print 'Cannot connect to the server in the authentication process, exit the program!'
+            print 'Cannot connect to the server in the authentication process, exiting the program!'
             os._exit(0)
         except Exception as e:
             print e
@@ -109,11 +109,10 @@ class ChatClient(cmd.Cmd):
         auth_init_response = self.client_sock.recv(MAX_MSG_SIZE)
         return auth_init_response
 
-    @staticmethod
-    def _handle_auth_init_response(auth_init_response):
+    def _handle_auth_init_response(self, auth_init_response):
         trunc_challenge = Utils.substring_before(auth_init_response, SEPARATOR)
         challenge_hash = Utils.substring_after(auth_init_response, SEPARATOR)
-        solved_challenge = Utils.solve_challenge(trunc_challenge, challenge_hash)
+        solved_challenge = self.solve_challenge(trunc_challenge, challenge_hash)
         return solved_challenge
 
     def _auth_start(self, solved_challenge, user_name, password):
@@ -167,7 +166,7 @@ class ChatClient(cmd.Cmd):
             self._send_sym_encrypted_msg_to_server(MessageType.LIST_USERS, 'list')
             validate_result, list_response = self._recv_sym_encrypted_msg_from_server()
             if validate_result:
-                print MSG_PROMPT + 'Online users: ' + ', '.join(list_response.user_names.split(SEPARATOR1))
+                print MSG_PROMPT + 'Current logged in users: ' + ', '.join(list_response.user_names.split(SEPARATOR1))
                 # set the client information in self.online_list
                 parsed_list_response = list_response.user_names.split(SEPARATOR1)
                 for user in parsed_list_response:
@@ -199,7 +198,7 @@ class ChatClient(cmd.Cmd):
                     time.sleep(1)
                 # if we have already connected to this user, send message to the user
                 if receiver_info.connected:
-                    print '###### Sent message to the user <' + receiver_name + '>'
+                    print 'Sent message to the user <' + receiver_name + '>'
                     self._send_text_msg(msg, receiver_info)
                 # otherwise we cannot send message to the user
                 else:
@@ -271,7 +270,7 @@ class ChatClient(cmd.Cmd):
             decrypted_data = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
             msg_obj = Utils.deserialize_obj(decrypted_data)
             # if the message's timestamp is invalid
-            if not Utils.validate_timestamp(msg_obj.timestamp):
+            if not Crypto.validate_timestamp(msg_obj.timestamp):
                 print 'Timestamp of the message from another user is invalid, drop the message!'
                 continue
             if tpe == MessageType.CONN_USER_START:
@@ -345,8 +344,7 @@ class ChatClient(cmd.Cmd):
             decrypted_msg = Crypto.symmetric_decrypt(user_info.sec_key, iv, encrypted_msg)
             msg_signature = text_msg.msg_signature
             if Crypto.verify_signature(user_info.pub_key, decrypted_msg, msg_signature):
-                # print '\n' + MSG_PROMPT + '<From ' + ip + ':' + str(port) + ':' + user_name + ">: " + decrypted_msg
-                print '\n' + user_name + MSG_PROMPT + decrypted_msg
+                print '\n' + MSG_PROMPT + user_name + " has sent you: " + decrypted_msg
                 print self.user_name + CMD_PROMPT,
 
     def _handle_disconn_msg(self, disconn_msg):
@@ -358,7 +356,7 @@ class ChatClient(cmd.Cmd):
     def do_logout(self, arg):
         try:
             if self._logout_from_server():
-                print '###### User <' + self.user_name + '> successfully logout.'
+                print '<' + self.user_name + '> successfully logout.'
                 self._disconnect_all_users()
                 self.client_sock.close()
                 self.recv_sock.close()
@@ -375,7 +373,7 @@ class ChatClient(cmd.Cmd):
     def _disconnect_all_users(self):
         for user_name, user_info in self.online_list.iteritems():
             if user_info.connected:
-                print '###### Disconnect to the user <' + user_name + '>'
+                print 'Disconnecting the user <' + user_name + '>'
                 disconn_msg = DisconnMsg(self.user_name, time.time())
                 self._send_encrypted_msg_to_user(user_info, MessageType.DIS_CONN, disconn_msg)
 
@@ -413,7 +411,7 @@ class ChatClient(cmd.Cmd):
                                                           encrypted_response_without_iv)
             if validate_timestamp:
                 decrypted_response = Utils.deserialize_obj(decrypted_response)
-                if not Utils.validate_timestamp(decrypted_response.timestamp):
+                if not Crypto.validate_timestamp(decrypted_response.timestamp):
                     return False, None
             return True, decrypted_response
 
@@ -423,13 +421,24 @@ class ChatClient(cmd.Cmd):
         msg = Message.dumps(message_type, encrypted_msg)
         self.send_sock.sendto(msg, target_user_info.address)
 
+    @staticmethod
+    def solve_challenge(trunc_challenge, challenge_hash):
+        trunc_challenge = long(trunc_challenge)
+        guessed_challenge = trunc_challenge
+        n = 0
+        while len(str(guessed_challenge)) <= 40:
+            guessed_challenge = str(trunc_challenge + (n << 112))
+            if Crypto.generate_hash(guessed_challenge) == challenge_hash:
+                return guessed_challenge
+            n += 1
+
     # -------------- override default function: will be invoked if inputting invalid command -------------- #
     def default(self, line):
-        print '=========== Only the following 3 commands are supported: ============='
-        print '|| list: list all online user names                                 ||'
-        print '|| send <user_name> <message>: send message to another online user  ||'
-        print '|| logout: logout from the server and disconnect all other users    ||'
-        print '======================================================================'
+        print '<------ Only the following 3 commands are supported------>'
+        print '1. list: list all online user names'
+        print '2. send <username> <message>: send message to another online user'
+        print '3. logout: logout from the server'
+        print '<-------------------------------------------------------->'
 
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 import base64
 import socket
 
+import time
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.kdf.x963kdf import X963KDF
@@ -8,6 +9,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.exceptions import InvalidSignature
+
+import Message
 
 
 def generate_rsa_key_pair(public_exponent=65537, key_size=1024):
@@ -193,3 +196,18 @@ def get_local_ip():
     local_ip = s.getsockname()[0]
     s.close()
     return local_ip
+
+def validate_timestamp(timestamp):
+    cur_time = time.time()
+    if cur_time - float(timestamp) > Message.MAX_TIMESTAMP_GAP:
+        print 'Gap between timestamp is too large, invalid message!'
+        return False
+    return True
+
+def get_free_port():
+    # get free port : creating a new socket (port is randomly assigned), and close it
+    sock = socket.socket()
+    sock.bind(('', 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return int(port)

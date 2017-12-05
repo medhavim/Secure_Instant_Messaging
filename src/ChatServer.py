@@ -55,19 +55,6 @@ class Server:
                 users_info[username] = salt_and_hash
         return users_info
 
-    def run(self):
-        try:
-            self.sock.bind((self.host, self.port))
-            self.sock.listen(1)
-            print 'Server Started on ' + self.host + ':' + str(self.port) + ' ...'
-            threading.Thread(target=self.exit_handler, args=()).start()
-            while True:
-                connection, client_address = self.sock.accept()
-                threading.Thread(target=self.client_handler, args=(connection, client_address)).start()
-        except socket.error:
-            traceback.print_exc()
-            print 'Server failed to start'
-
     def exit_handler(self):
         while True:
             command = raw_input()
@@ -80,7 +67,6 @@ class Server:
         try:
             while True:
                 msg = connection.recv(MAX_MSG_SIZE)
-                print "line 83", msg, client_address
                 if not msg:
                     break
                 msg = json.loads(msg)
@@ -90,30 +76,37 @@ class Server:
                 # handle authentication init message
                 if msg_type == MessageType.INIT and client_address not in self.users_loggedin:
                     print 'receive authentication init message from ', client_address
-                    self._handle_client_init(connection, client_address)
+                    self.client_handler_init(connection, client_address)
                 # handle authentication start message
                 elif msg_type == MessageType.AUTH_START and client_address in self.users_loggedin \
                         and self.users_loggedin[client_address].state == UserState.INIT:
                     print 'receive authentication start message from ', client_address
-                    ver_result, response_msg = self._handle_client_auth_start(client_address, data)
+                    ver_result, response_msg = self.client_handler_auth_start(client_address, data)
+                    msg = dict()
+                    msg['data'] = response_msg
                     if not ver_result:
-                        connection.sendall(Message.dumps(MessageType.RES_FOR_INVALID_REQ, response_msg))
-                        self._client_error(connection, client_address)
+                        msg['type'] = MessageType.RES_FOR_INVALID_REQ
+                        connection.sendall(json.dumps(msg))
+                        self.client_error_handler(connection, client_address)
                         break
-                    connection.sendall(Message.dumps(MessageType.RES_FOR_VALID_REQ, response_msg))
+                    msg['type'] = MessageType.RES_FOR_VALID_REQ
+                    connection.sendall(json.dumps(msg))
                 # handle authentication end message
                 elif msg_type == MessageType.AUTH_END and client_address in self.users_loggedin \
                         and self.users_loggedin[client_address].state == UserState.VERIFIED:
                     print 'receive authentication end message from ', client_address
-                    auth_result, response_msg = self._handle_client_auth_end(client_address, data)
+                    auth_result, response_msg = self.client_handler_auth_end(client_address, data)
                     if not auth_result:
-                        connection.sendall(Message.dumps(MessageType.RES_FOR_INVALID_REQ, response_msg))
-                        self._client_error(connection, client_address)
+                        msg = dict()
+                        msg['type'] = MessageType.RES_FOR_INVALID_REQ
+                        msg['data'] = response_msg
+                        connection.sendall(json.dumps(msg))
+                        self.client_error_handler(connection, client_address)
                         break
                     self.users_loggedin[client_address].state = UserState.AUTHENTICATED
                     print 'successfully login user: ', self.users_loggedin[client_address].user_name
-                    self._send_sym_encrypted_msg_to_client(connection, self.users_loggedin[client_address], response_msg,
-                                                           False)
+                    self.send_encrypted_data_to_client(connection, self.users_loggedin[client_address], response_msg,
+                                                       False)
                 # ----------------- handle messages sent from authenticated users --------------------#
                 elif client_address in self.users_loggedin and self.users_loggedin[
                     client_address].state == UserState.AUTHENTICATED:
@@ -125,32 +118,32 @@ class Server:
                     # handle list message
                     if msg_type == MessageType.LIST_USERS:
                         print 'receive list request message from ', client_address
-                        self._handle_client_list(user_info, connection, decrypted_msg)
+                        self.client_handler_list(user_info, connection, decrypted_msg)
                     # handle get user info message
                     elif msg_type == MessageType.GET_USER_INFO:
                         print 'receive get user info message from ', client_address
-                        self._handle_get_user_info(user_info, connection, decrypted_msg)
+                        self.client_handler_userinfo(user_info, connection, decrypted_msg)
                     # handle logout message
                     elif msg_type == MessageType.LOGOUT:
                         print 'receive logout message from ', client_address
-                        self._handle_logout(user_info, client_address, connection, decrypted_msg)
+                        self.logout_handler(user_info, client_address, connection, decrypted_msg)
                     else:
                         print 'illegal message type: ', msg_type
         except:
             print 'Error happens when handling client messages, break the connection!'
-            self._client_error(connection, client_address)
+            self.client_error_handler(connection, client_address)
         finally:
             print 'Close the connection with ' + str(client_address)
             connection.close()
 
     # --------------------------- login related messages ------------------------- #
-    def _handle_client_init(self, connection, client_address):
-        challenge, challenge_hash, trunc_challenge = Utils.generate_challenge()
+    def client_handler_init(self, connection, client_address):
+        challenge, challenge_hash, trunc_challenge = self.generate_challenge()
         connection.sendall(str(trunc_challenge) + SEPARATOR + challenge_hash)
         user_info = UserInfo(str(challenge))
         self.users_loggedin[client_address] = user_info
 
-    def _handle_client_auth_start(self, client_address, data):
+    def client_handler_auth_start(self, client_address, data):
         challenge = Utils.substring_before(data, SEPARATOR)
         auth_start_msg = Crypto.asymmetric_decrypt(self.pri_key, Utils.substring_after(data, SEPARATOR))
         auth_start_msg_obj = Utils.deserialize_obj(auth_start_msg)
@@ -159,7 +152,7 @@ class Server:
             return False, 'Answer to the given challenge is wrong!'
         user_name = auth_start_msg_obj.user_name
         # the same user cannot login twice
-        user_info = self._find_user_info_by_name(user_name)
+        user_info = self.find_user_by_name(user_name)
         if user_info is not None and user_info.state == UserState.AUTHENTICATED:
             return False, 'The user has already logged in, please retry with another user!'
         # if the provided password is wrong
@@ -195,7 +188,7 @@ class Server:
             return False
         return True
 
-    def _handle_client_auth_end(self, client_address, data):
+    def client_handler_auth_end(self, client_address, data):
         user_info = self.users_loggedin[client_address]
         iv, encrypted_c2_nonce = data.split(SEPARATOR)
         received_c2_nonce = Crypto.symmetric_decrypt(user_info.secret_key,
@@ -207,19 +200,19 @@ class Server:
         return True, auth_end_res_msg
 
     # --------------------------- get all users' names --------------------------- #
-    def _handle_client_list(self, request_user_info, connection, received_list_message):
+    def client_handler_list(self, request_user_info, connection, received_list_message):
         list_flag, list_send_time = received_list_message.split(SEPARATOR)
-        if self._check_timestamp(connection, list_send_time):
+        if self.validate_timestamp_in_req(connection, list_send_time):
             current_user_names = SEPARATOR1.join(user.user_name for client_addr, user in self.users_loggedin.iteritems())
             user_list_res = UserListRes(current_user_names)
-            self._send_sym_encrypted_msg_to_client(connection, request_user_info, user_list_res)
+            self.send_encrypted_data_to_client(connection, request_user_info, user_list_res)
 
     # --------------------------- get information of another user ------------------------- #
-    def _handle_get_user_info(self, request_user_info, connection, user_info_msg):
+    def client_handler_userinfo(self, request_user_info, connection, user_info_msg):
         target_user_name, send_time = user_info_msg.split(SEPARATOR)
-        if not self._check_timestamp(connection, send_time):
+        if not self.validate_timestamp_in_req(connection, send_time):
             return
-        target_user_info = self._find_user_info_by_name(target_user_name)
+        target_user_info = self.find_user_by_name(target_user_name)
         if target_user_info is not None:
             key_between_client = Utils.generate_symmetric_key()
             timestamp_to_expire = time.time() + 1000
@@ -236,12 +229,14 @@ class Server:
                 ticket_signature,
                 Crypto.serialize_pub_key(target_pubkey)
             )
-            self._send_sym_encrypted_msg_to_client(connection, request_user_info, user_info_msg)
+            self.send_encrypted_data_to_client(connection, request_user_info, user_info_msg)
         else:
-            connection.sendall(
-                Message.dumps(MessageType.RES_FOR_INVALID_REQ, 'The user <' + target_user_name + '> is offline!'))
+            msg=dict()
+            msg['type'] = MessageType.RES_FOR_INVALID_REQ
+            msg['data'] = 'The user <' + target_user_name + '> is offline!'
+            connection.sendall(json.dumps(msg))
 
-    def _find_user_info_by_name(self, user_name):
+    def find_user_by_name(self, user_name):
         for user_addr in self.users_loggedin:
             login_user_info = self.users_loggedin[user_addr]
             if login_user_info.user_name == user_name:
@@ -249,47 +244,72 @@ class Server:
         return None
 
     # --------------------------- logout the user ------------------------- #
-    def _handle_logout(self, request_user_info, client_address, connection, logout_msg):
+    def logout_handler(self, request_user_info, client_address, connection, logout_msg):
         n, timestamp = logout_msg.split(SEPARATOR)
-        if not self._check_timestamp(connection, timestamp):
+        if not self.validate_timestamp_in_req(connection, timestamp):
             return
         if client_address in self.users_loggedin:
             del self.users_loggedin[client_address]
             logout_res = LogoutRes('OK')
-            self._send_sym_encrypted_msg_to_client(connection, request_user_info, logout_res)
+            self.send_encrypted_data_to_client(connection, request_user_info, logout_res)
         else:
-            connection.sendall(
-                Message.dumps(MessageType.RES_FOR_INVALID_REQ, 'Trying to logout an offline user!'))
+            msg = dict()
+            msg['type'] = MessageType.RES_FOR_INVALID_REQ
+            msg['data'] = 'Trying to logout an offline user!'
+            connection.sendall(json.dumps(msg))
 
     # ------------ Common function using symmetric encryption to send back message to client -------------- #
     @staticmethod
-    def _send_sym_encrypted_msg_to_client(connection, request_user_info, msg, include_timestamp=True):
+    def send_encrypted_data_to_client(connection, request_user_info, msg, include_timestamp=True):
         iv = Utils.generate_iv()
         if include_timestamp:
             msg.timestamp = time.time()
             msg = Utils.serialize_obj(msg)
         encrypted_res_message = Crypto.symmetric_encrypt(request_user_info.secret_key, iv, msg)
-        send_res_msg = Message.dumps(MessageType.RES_FOR_VALID_REQ,
-                                     Crypto.asymmetric_encrypt(request_user_info.rsa_pub_key, iv) +
-                                     SEPARATOR + encrypted_res_message)
-        connection.sendall(send_res_msg)
+        send_res_msg = dict()
+        send_res_msg['type'] = MessageType.RES_FOR_VALID_REQ
+        send_res_msg['data'] = Crypto.asymmetric_encrypt(request_user_info.rsa_pub_key, iv) + \
+                               SEPARATOR + encrypted_res_message
+        connection.sendall(json.dumps(send_res_msg))
 
-    def _client_error(self, connection, client_address):
+    def client_error_handler(self, connection, client_address):
         if client_address in self.users_loggedin:
             del self.users_loggedin[client_address]
         connection.close()
 
     @staticmethod
-    def _check_timestamp(connection, timestamp):
-        if not Utils.validate_timestamp(timestamp):
-            connection.sendall(
-                Message.dumps(MessageType.RES_FOR_INVALID_REQ, 'Timestamp gap is too large, invalid message!'))
+    def validate_timestamp_in_req(connection, timestamp):
+        if not Crypto.validate_timestamp(timestamp):
+            msg = dict()
+            msg['type'] = MessageType.RES_FOR_INVALID_REQ
+            msg['data'] = 'Gap between timestamp is too large, invalid message!'
+            connection.sendall(json.dumps(msg))
             return False
         return True
 
+    def generate_challenge(self):
+        challenge = Utils.generate_nonce()
+        trunc_challenge = challenge & 0x0000ffffffffffffffffffffffffffff
+        challenge_hash = Crypto.generate_hash(str(challenge))
+        return challenge, challenge_hash, trunc_challenge
+
+
+    def run(self):
+        try:
+            self.sock.bind((self.host, self.port))
+            self.sock.listen(1)
+            print 'Server Started on ' + self.host + ':' + str(self.port) + ' ...'
+            threading.Thread(target=self.exit_handler, args=()).start()
+            while True:
+                connection, client_address = self.sock.accept()
+                threading.Thread(target=self.client_handler, args=(connection, client_address)).start()
+        except socket.error:
+            traceback.print_exc()
+            print 'Server failed to start'
+
 
 if __name__ == '__main__':
-    # parse the innput parameters
+    # parse the input parameters
     config = ConfigParser.RawConfigParser()
     config.read('src/configuration/server.cfg')
     port_num = config.getint('info', 'port')
