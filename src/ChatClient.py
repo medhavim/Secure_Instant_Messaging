@@ -1,3 +1,4 @@
+import ConfigParser
 import socket
 import cmd
 import threading
@@ -48,7 +49,7 @@ class ChatClient(cmd.Cmd):
         # shared dh key
         self.shared_dh_key = None
         # chat client ip and port, used to receive messages
-        self.client_ip = Utils.get_local_ip()
+        self.client_ip = Crypto.get_local_ip()
         self.client_port = Utils.get_free_port()
         # online-users known to the chatclient
         self.online_list = dict()
@@ -66,8 +67,8 @@ class ChatClient(cmd.Cmd):
             login_times += 1
             if logined:
                 self.user_name = user_name
-                chat_client.prompt = self.user_name + CMD_PROMPT
-                chat_client.cmdloop('###### User <' + user_name + '> successfully login')
+                client.prompt = self.user_name + CMD_PROMPT
+                client.cmdloop('###### User <' + user_name + '> successfully login')
         if not logined:
             print 'Your retry times has exceeded the maximum allowed times, exit the program!'
             self.recv_sock.close()
@@ -94,7 +95,8 @@ class ChatClient(cmd.Cmd):
         except socket.error:
             print 'Cannot connect to the server in the authentication process, exit the program!'
             os._exit(0)
-        except:
+        except Exception as e:
+            print e
             print 'Unknown error happens when trying to login: ', sys.exc_info()[0], ', please retry!'
         finally:
             if not login_result:
@@ -253,7 +255,7 @@ class ChatClient(cmd.Cmd):
     # --------------------------- start a server socket to receive messages from other users ------------------------- #
     def _start_recv_sock(self):
         try:
-            print '###### Start recv socket on ' + self.client_ip + ':' + str(self.client_port)
+            print 'Start recv socket on ' + self.client_ip + ':' + str(self.client_port)
             self.recv_sock.bind((self.client_ip, self.client_port))
             threading.Thread(target=self._listen_msg).start()
         except socket.error:
@@ -431,12 +433,14 @@ class ChatClient(cmd.Cmd):
 
 
 if __name__ == '__main__':
-    config = Utils.load_config('conf/client.cfg')
-    server_ip = config.get('server_info', 'ip')
+    config = ConfigParser.RawConfigParser()
+    config.read('src/configuration/client.cfg')
+    # server_ip = config.get('server_info', 'ip')
+    server_ip = Crypto.get_local_ip()
     server_port = config.getint('server_info', 'port')
     server_pub_key = config.get('server_info', 'pub_key')
 
     # initialize the client
-    chat_client = ChatClient(server_ip, server_port, server_pub_key)
+    client = ChatClient(server_ip, server_port, server_pub_key)
     # connect the client to the chat server
-    chat_client.login()
+    client.login()

@@ -1,4 +1,5 @@
 import base64
+import socket
 
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
 from cryptography.hazmat.primitives import serialization, hashes
@@ -184,3 +185,11 @@ def load_public_key(key_file):
     with open(key_file, 'r') as f:
         public_key_str = f.read()
         return deserialize_pub_key(base64.b64encode(public_key_str))
+
+def get_local_ip():
+    # get local ip address by trying to connect to the DNS of google
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    local_ip = s.getsockname()[0]
+    s.close()
+    return local_ip

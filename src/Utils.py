@@ -19,20 +19,20 @@ def get_free_port():
     return int(port)
 
 
-def get_local_ip():
-    # get local ip address by trying to connect to the DNS of google
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    local_ip = s.getsockname()[0]
-    s.close()
-    return local_ip
+# def get_local_ip():
+#     # get local ip address by trying to connect to the DNS of google
+#     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#     s.connect(("8.8.8.8", 80))
+#     local_ip = s.getsockname()[0]
+#     s.close()
+#     return local_ip
 
 
 # ---------------------- Other specific utils -----------------------#
-def load_config(config_file):
-   config = ConfigParser.RawConfigParser()
-   config.read(config_file)
-   return config
+# def load_config(config_file):
+#    config = ConfigParser.RawConfigParser()
+#    config.read(config_file)
+#    return config
 
 
 def validate_timestamp(timestamp):
