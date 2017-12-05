@@ -295,7 +295,7 @@ class Server:
 if __name__ == '__main__':
     # parse the innput parameters
     config = ConfigParser.RawConfigParser()
-    config.read('conf/server.cfg')
+    config.read('configuration/server.cfg')
     port_num = config.getint('info', 'port')
     pri_key = config.get('info', 'private_key')
     user_creds = config.get('info', 'user_creds')
