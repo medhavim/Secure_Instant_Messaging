@@ -31,7 +31,7 @@ class UserInfo:
         self.connected = False
 
 
-class ChatClient(cmd.Cmd):
+class Client(cmd.Cmd):
     def __init__(self, ip, port, pub_key_file):
         self.send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -450,6 +450,6 @@ if __name__ == '__main__':
     server_pub_key = config.get('server_info', 'pub_key')
 
     # initialize the client
-    client = ChatClient(server_ip, server_port, server_pub_key)
+    client = Client(server_ip, server_port, server_pub_key)
     # connect the client to the chat server
     client.login()

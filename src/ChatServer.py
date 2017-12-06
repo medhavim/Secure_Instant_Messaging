@@ -40,12 +40,11 @@ class Server:
         self.pri_key = Crypto.load_private_key(private_key_file)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.all_users = self.userInfo(users_info_file)
+        self.all_users = self.read_userInfo(users_info_file)
         self.users_loggedin = dict()
 
     @staticmethod
-    def userInfo(users_info_file, delimiter=',', quotechar='|'):
-    #def _load_users_info(users_info_file, delimiter=',', quotechar='|'):
+    def read_userInfo(users_info_file, delimiter=';', quotechar='|'):
         users_info = dict()
         with open(users_info_file, 'rb') as csv_file:
             rows = csv.reader(csv_file, delimiter=delimiter, quotechar=quotechar)
@@ -54,14 +53,6 @@ class Server:
                 salt_and_hash = (row[1], row[2])
                 users_info[username] = salt_and_hash
         return users_info
-
-    def exit_handler(self):
-        while True:
-            command = raw_input()
-            if command.strip() == 'exit':
-                print 'shutting down the server'
-                self.sock.close()
-                os._exit(0)
 
     def client_handler(self, connection, client_address):
         try:
@@ -76,12 +67,12 @@ class Server:
                 # handle authentication init message
                 if msg_type == MessageType.INIT and client_address not in self.users_loggedin:
                     print 'receive authentication init message from ', client_address
-                    self.client_handler_init(connection, client_address)
+                    self.client_handler_for_init(connection, client_address)
                 # handle authentication start message
                 elif msg_type == MessageType.AUTH_START and client_address in self.users_loggedin \
                         and self.users_loggedin[client_address].state == UserState.INIT:
                     print 'receive authentication start message from ', client_address
-                    ver_result, response_msg = self.client_handler_auth_start(client_address, data)
+                    ver_result, response_msg = self.client_handler_for_auth_start(client_address, data)
                     msg = dict()
                     msg['data'] = response_msg
                     if not ver_result:
@@ -95,7 +86,7 @@ class Server:
                 elif msg_type == MessageType.AUTH_END and client_address in self.users_loggedin \
                         and self.users_loggedin[client_address].state == UserState.VERIFIED:
                     print 'receive authentication end message from ', client_address
-                    auth_result, response_msg = self.client_handler_auth_end(client_address, data)
+                    auth_result, response_msg = self.client_handler_for_auth_end(client_address, data)
                     if not auth_result:
                         msg = dict()
                         msg['type'] = MessageType.RES_FOR_INVALID_REQ
@@ -118,11 +109,11 @@ class Server:
                     # handle list message
                     if msg_type == MessageType.LIST_USERS:
                         print 'receive list request message from ', client_address
-                        self.client_handler_list(user_info, connection, decrypted_msg)
+                        self.client_handler_for_list(user_info, connection, decrypted_msg)
                     # handle get user info message
                     elif msg_type == MessageType.GET_USER_INFO:
                         print 'receive get user info message from ', client_address
-                        self.client_handler_userinfo(user_info, connection, decrypted_msg)
+                        self.client_handler_for_loggedUsersInfo(user_info, connection, decrypted_msg)
                     # handle logout message
                     elif msg_type == MessageType.LOGOUT:
                         print 'receive logout message from ', client_address
@@ -137,13 +128,13 @@ class Server:
             connection.close()
 
     # --------------------------- login related messages ------------------------- #
-    def client_handler_init(self, connection, client_address):
+    def client_handler_for_init(self, connection, client_address):
         challenge, challenge_hash, trunc_challenge = self.generate_challenge()
         connection.sendall(str(trunc_challenge) + SEPARATOR + challenge_hash)
         user_info = UserInfo(str(challenge))
         self.users_loggedin[client_address] = user_info
 
-    def client_handler_auth_start(self, client_address, data):
+    def client_handler_for_auth_start(self, client_address, data):
         challenge = Utils.substring_before(data, SEPARATOR)
         auth_start_msg = Crypto.asymmetric_decrypt(self.pri_key, Utils.substring_after(data, SEPARATOR))
         auth_start_msg_obj = Utils.deserialize_obj(auth_start_msg)
@@ -157,7 +148,7 @@ class Server:
             return False, 'The user has already logged in, please retry with another user!'
         # if the provided password is wrong
         password = auth_start_msg_obj.password
-        if not self._verify_password(user_name, password):
+        if not self.check_password(user_name, password):
             return False, 'The user name or password is wrong, please retry!'
         # set user information
         user_info_obj = self.users_loggedin[client_address]
@@ -180,7 +171,7 @@ class Server:
         encrypted_response_msg = Crypto.asymmetric_encrypt(user_info_obj.rsa_pub_key, response_msg)
         return True, encrypted_response_msg
 
-    def _verify_password(self, user_name, password):
+    def check_password(self, user_name, password):
         if user_name not in self.all_users:
             return False
         salt, pwd_hash = self.all_users[user_name]
@@ -188,7 +179,7 @@ class Server:
             return False
         return True
 
-    def client_handler_auth_end(self, client_address, data):
+    def client_handler_for_auth_end(self, client_address, data):
         user_info = self.users_loggedin[client_address]
         iv, encrypted_c2_nonce = data.split(SEPARATOR)
         received_c2_nonce = Crypto.symmetric_decrypt(user_info.secret_key,
@@ -200,7 +191,7 @@ class Server:
         return True, auth_end_res_msg
 
     # --------------------------- get all users' names --------------------------- #
-    def client_handler_list(self, request_user_info, connection, received_list_message):
+    def client_handler_for_list(self, request_user_info, connection, received_list_message):
         list_flag, list_send_time = received_list_message.split(SEPARATOR)
         if self.validate_timestamp_in_req(connection, list_send_time):
             current_user_names = SEPARATOR1.join(user.user_name for client_addr, user in self.users_loggedin.iteritems())
@@ -208,7 +199,7 @@ class Server:
             self.send_encrypted_data_to_client(connection, request_user_info, user_list_res)
 
     # --------------------------- get information of another user ------------------------- #
-    def client_handler_userinfo(self, request_user_info, connection, user_info_msg):
+    def client_handler_for_loggedUsersInfo(self, request_user_info, connection, user_info_msg):
         target_user_name, send_time = user_info_msg.split(SEPARATOR)
         if not self.validate_timestamp_in_req(connection, send_time):
             return
@@ -276,6 +267,14 @@ class Server:
         if client_address in self.users_loggedin:
             del self.users_loggedin[client_address]
         connection.close()
+
+    def exit_handler(self):
+        while True:
+            command = raw_input()
+            if command.strip() == 'exit':
+                print 'server shutting down'
+                self.sock.close()
+                os._exit(0)
 
     @staticmethod
     def validate_timestamp_in_req(connection, timestamp):
