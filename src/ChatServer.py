@@ -41,20 +41,20 @@ class Server:
     def __init__(self, host, port, private_key_file, users_info_file):
         self.host = host
         self.port = port
-        self.pri_key = Crypto.load_private_key(private_key_file)
+        self.private_key = Crypto.load_private_key(private_key_file)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.all_users = self.read_userInfo(users_info_file)
         self.users_loggedin = dict()
 
     @staticmethod
-    def read_userInfo(users_info_file, delimiter=';', quotechar='|'):
+    def read_userInfo(users_info_file, delimiter=';', charQuote='|'):
         users_info = dict()
         with open(users_info_file, 'rb') as csv_file:
-            rows = csv.reader(csv_file, delimiter=delimiter, quotechar=quotechar)
+            rows = csv.reader(csv_file, delimiter=delimiter, quotechar=charQuote)
             for row in rows:
-                username = row[0]
                 salt_and_hash = (row[1], row[2])
+                username = row[0]
                 users_info[username] = salt_and_hash
         return users_info
 
@@ -70,12 +70,12 @@ class Server:
                 # ----------------- handle messages sent from unauthenticated users --------------------#
                 # handle authentication init message
                 if msg_type == MessageType.INIT and client_address not in self.users_loggedin:
-                    print 'receive authentication init message from ', client_address
+                    print 'authentication init message received from ', client_address
                     self.client_handler_for_init(connection, client_address)
                 # handle authentication start message
                 elif msg_type == MessageType.AUTH_START and client_address in self.users_loggedin \
                         and self.users_loggedin[client_address].state == UserState.INIT:
-                    print 'receive authentication start message from ', client_address
+                    print 'authentication start message received from ', client_address
                     ver_result, response_msg = self.client_handler_for_auth_start(client_address, data)
                     msg = dict()
                     msg['data'] = response_msg
@@ -89,7 +89,7 @@ class Server:
                 # handle authentication end message
                 elif msg_type == MessageType.AUTH_END and client_address in self.users_loggedin \
                         and self.users_loggedin[client_address].state == UserState.VERIFIED:
-                    print 'receive authentication end message from ', client_address
+                    print 'authentication end message received from ', client_address
                     auth_result, response_msg = self.client_handler_for_auth_end(client_address, data)
                     if not auth_result:
                         msg = dict()
@@ -108,7 +108,7 @@ class Server:
                     iv, encrypted_msg = data.split(SEPARATOR)
                     user_info = self.users_loggedin[client_address]
                     decrypted_msg = Crypto.symmetric_decrypt(user_info.secret_key,
-                                                             Crypto.asymmetric_decrypt(self.pri_key, iv),
+                                                             Crypto.asymmetric_decrypt(self.private_key, iv),
                                                              encrypted_msg)
                     # handle list message
                     if msg_type == MessageType.LIST_USERS:
@@ -140,7 +140,7 @@ class Server:
 
     def client_handler_for_auth_start(self, client_address, data):
         challenge = Utils.substring_before(data, SEPARATOR)
-        auth_start_msg = Crypto.asymmetric_decrypt(self.pri_key, Utils.substring_after(data, SEPARATOR))
+        auth_start_msg = Crypto.asymmetric_decrypt(self.private_key, Utils.substring_after(data, SEPARATOR))
         deserialized_auth_start_msg = pickle.loads(auth_start_msg)
         # if the challenge solution is wrong, return false directly
         if challenge != self.users_loggedin[client_address].challenge:
@@ -187,7 +187,7 @@ class Server:
         user_info = self.users_loggedin[client_address]
         iv, encrypted_c2_nonce = data.split(SEPARATOR)
         received_c2_nonce = Crypto.symmetric_decrypt(user_info.secret_key,
-                                                     Crypto.asymmetric_decrypt(self.pri_key, iv),
+                                                     Crypto.asymmetric_decrypt(self.private_key, iv),
                                                      encrypted_c2_nonce)
         if received_c2_nonce != str(user_info.temp_nonce):
             return False, 'The nonce encrypted with the session key is wrong!'
@@ -214,7 +214,7 @@ class Server:
             ticket = request_user_info.user_name + SEPARATOR1 + \
                      key_between_client + SEPARATOR1 + \
                      str(timestamp_to_expire)
-            ticket_signature = Crypto.sign(self.pri_key, ticket)
+            ticket_signature = Crypto.sign(self.private_key, ticket)
             target_pubkey = target_user_info.rsa_pub_key
             user_info_msg = UserInfoRes(
                 target_user_info.ip,
