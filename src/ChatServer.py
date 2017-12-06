@@ -1,7 +1,11 @@
+import base64
 import json
 import socket
 import threading
 import csv
+
+import pickle
+
 import Crypto
 import os
 import Message
@@ -137,38 +141,38 @@ class Server:
     def client_handler_for_auth_start(self, client_address, data):
         challenge = Utils.substring_before(data, SEPARATOR)
         auth_start_msg = Crypto.asymmetric_decrypt(self.pri_key, Utils.substring_after(data, SEPARATOR))
-        auth_start_msg_obj = Utils.deserialize_obj(auth_start_msg)
+        deserialized_auth_start_msg = pickle.loads(auth_start_msg)
         # if the challenge solution is wrong, return false directly
         if challenge != self.users_loggedin[client_address].challenge:
-            return False, 'Answer to the given challenge is wrong!'
-        user_name = auth_start_msg_obj.user_name
+            return False, 'Response to the given challenge is incorrect!'
+        user_name = deserialized_auth_start_msg.user_name
         # the same user cannot login twice
         user_info = self.find_user_by_name(user_name)
         if user_info is not None and user_info.state == UserState.AUTHENTICATED:
-            return False, 'The user has already logged in, please retry with another user!'
+            return False, 'User is already logged in, please logout and retry!'
         # if the provided password is wrong
-        password = auth_start_msg_obj.password
+        password = deserialized_auth_start_msg.password
         if not self.check_password(user_name, password):
-            return False, 'The user name or password is wrong, please retry!'
+            return False, 'The user name or password is wrong!'
         # set user information
-        user_info_obj = self.users_loggedin[client_address]
-        user_info_obj.user_name = auth_start_msg_obj.user_name
-        user_info_obj.ip = auth_start_msg_obj.ip
-        user_info_obj.port = int(auth_start_msg_obj.port)
-        user_info_obj.rsa_pub_key = Crypto.deserialize_pub_key(auth_start_msg_obj.rsa_pub_key)
-        user_info_obj.state = UserState.VERIFIED
+        user_obj = self.users_loggedin[client_address]
+        user_obj.user_name = deserialized_auth_start_msg.user_name
+        user_obj.ip = deserialized_auth_start_msg.ip
+        user_obj.port = int(deserialized_auth_start_msg.port)
+        user_obj.rsa_pub_key = Crypto.deserialize_pub_key(deserialized_auth_start_msg.rsa_pub_key)
+        user_obj.state = UserState.VERIFIED
         # DH key exchange
-        user_dh_pub_key = Crypto.deserialize_pub_key(auth_start_msg_obj.dh_pub_key)
+        user_dh_pub_key = Crypto.deserialize_pub_key(deserialized_auth_start_msg.dh_pub_key)
         dh_pri_key, dh_pub_key = Crypto.generate_dh_key_pair()
-        user_info_obj.secret_key = Crypto.generate_shared_dh_key(dh_pri_key, user_dh_pub_key)
+        user_obj.secret_key = Crypto.generate_shared_dh_key(dh_pri_key, user_dh_pub_key)
         # compose response message
-        c1_nonce = auth_start_msg_obj.c1_nonce
+        c1_nonce = deserialized_auth_start_msg.c1_nonce
         c2_nonce = Utils.generate_nonce(32)
-        user_info_obj.temp_nonce = c2_nonce
+        user_obj.temp_nonce = c2_nonce
         serialized_dh_pub_key = Crypto.serialize_pub_key(dh_pub_key)
         response_obj = AuthStartRes(serialized_dh_pub_key, c1_nonce, c2_nonce)
-        response_msg = Utils.serialize_obj(response_obj)
-        encrypted_response_msg = Crypto.asymmetric_encrypt(user_info_obj.rsa_pub_key, response_msg)
+        response_msg = pickle.dumps(response_obj, pickle.HIGHEST_PROTOCOL)
+        encrypted_response_msg = Crypto.asymmetric_encrypt(user_obj.rsa_pub_key, response_msg)
         return True, encrypted_response_msg
 
     def check_password(self, user_name, password):
@@ -205,7 +209,7 @@ class Server:
             return
         target_user_info = self.find_user_by_name(target_user_name)
         if target_user_info is not None:
-            key_between_client = Utils.generate_symmetric_key()
+            key_between_client = base64.b64encode(os.urandom(32))
             timestamp_to_expire = time.time() + 1000
             ticket = request_user_info.user_name + SEPARATOR1 + \
                      key_between_client + SEPARATOR1 + \
@@ -252,10 +256,10 @@ class Server:
     # ------------ Common function using symmetric encryption to send back message to client -------------- #
     @staticmethod
     def send_encrypted_data_to_client(connection, request_user_info, msg, include_timestamp=True):
-        iv = Utils.generate_iv()
+        iv = base64.b64encode(os.urandom(16))
         if include_timestamp:
             msg.timestamp = time.time()
-            msg = Utils.serialize_obj(msg)
+            msg = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
         encrypted_res_message = Crypto.symmetric_encrypt(request_user_info.secret_key, iv, msg)
         send_res_msg = dict()
         send_res_msg['type'] = MessageType.RES_FOR_VALID_REQ
