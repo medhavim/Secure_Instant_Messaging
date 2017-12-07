@@ -1,6 +1,6 @@
 import base64
 import socket
-
+import os
 import time
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
 from cryptography.hazmat.primitives import serialization, hashes
@@ -210,3 +210,10 @@ def get_free_port():
     port = sock.getsockname()[1]
     sock.close()
     return int(port)
+
+# ---------------------- Nonce related utils -----------------------#
+def generate_nonce(size=128):
+    nonce_str = os.urandom(size / 8)
+    nonce_num = long(nonce_str.encode('hex'), 16)
+    return nonce_num
+

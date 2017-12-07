@@ -49,24 +49,24 @@ class AuthStartMsg(object):
                  dh_pub_key,
                  ip,
                  port,
-                 c1_nonce):
+                 n1):
         self.user_name = user_name
         self.password = password
         self.rsa_pub_key = rsa_pub_key
         self.dh_pub_key = dh_pub_key
         self.ip = ip
         self.port = port
-        self.c1_nonce = c1_nonce
+        self.n1 = n1
 
 
 class AuthStartRes(object):
     def __init__(self,
                  dh_pub_key,
-                 c1_nonce,
-                 c2_nonce):
+                 n1,
+                 n2):
         self.dh_pub_key = dh_pub_key
-        self.c1_nonce = c1_nonce
-        self.c2_nonce = c2_nonce
+        self.n1 = n1
+        self.n2 = n2
 
 
 class UserListRes(object):
@@ -103,7 +103,7 @@ class ConnStartMsg(object):
                  pub_key,
                  ticket,
                  ticket_signature,
-                 c3_nonce,
+                 n3,
                  timestamp):
         self.user_name = user_name
         self.ip = ip
@@ -111,7 +111,7 @@ class ConnStartMsg(object):
         self.pub_key = pub_key
         self.ticket = ticket
         self.ticket_signature = ticket_signature
-        self.c3_nonce = c3_nonce
+        self.n3 = n3
         self.timestamp = timestamp
 
 
@@ -119,13 +119,13 @@ class ConnBackMsg(object):
     def __init__(self,
                  user_name,
                  iv,
-                 encrypted_c3_nonce,
-                 c4_nonce,
+                 encrypted_n3,
+                 n4,
                  timestamp):
         self.user_name = user_name
         self.iv = iv
-        self.encrypted_c3_nonce = encrypted_c3_nonce
-        self.c4_nonce = c4_nonce
+        self.encrypted_n3 = encrypted_n3
+        self.n4 = n4
         self.timestamp = timestamp
 
 
@@ -133,11 +133,11 @@ class ConnEndMsg(object):
     def __init__(self,
                  user_name,
                  iv,
-                 encrypted_c4_nonce,
+                 encrypted_n4,
                  timestamp):
         self.user_name = user_name
         self.iv = iv
-        self.encrypted_c4_nonce = encrypted_c4_nonce
+        self.encrypted_n4 = encrypted_n4
         self.timestamp = timestamp
 
 

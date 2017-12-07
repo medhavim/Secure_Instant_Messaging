@@ -168,11 +168,11 @@ class Server:
         current_user.secret_key = Crypto.generate_shared_dh_key(dh_pri_key,
                                                             Crypto.deserialize_pub_key(response_from_client.dh_pub_key))
         # compose response message
-        c1_nonce = response_from_client.c1_nonce
-        c2_nonce = Utils.generate_nonce(32)
-        current_user.temp_nonce = c2_nonce
+        n1 = response_from_client.n1
+        n2 = Crypto.generate_nonce(32)
+        current_user.temp_nonce = n2
         serialized_dh_pub_key = Crypto.serialize_pub_key(dh_pub_key)
-        response_to_client = pickle.dumps(AuthStartRes(serialized_dh_pub_key, c1_nonce, c2_nonce), pickle.HIGHEST_PROTOCOL)
+        response_to_client = pickle.dumps(AuthStartRes(serialized_dh_pub_key, n1, n2), pickle.HIGHEST_PROTOCOL)
         encrypted_response_to_client = Crypto.asymmetric_encrypt(current_user.rsa_pub_key, response_to_client)
         return True, encrypted_response_to_client
 
@@ -186,13 +186,13 @@ class Server:
 
     def client_handler_for_auth_end(self, client_address, data):
         user_dict = self.users_loggedin[client_address]
-        iv, encrypted_c2_nonce = data.split(LINE_SEPARATOR)
-        received_c2_nonce = Crypto.symmetric_decrypt(user_dict.secret_key,
+        iv, encrypted_n2 = data.split(LINE_SEPARATOR)
+        received_n2 = Crypto.symmetric_decrypt(user_dict.secret_key,
                                                      Crypto.asymmetric_decrypt(self.private_key, iv),
-                                                     encrypted_c2_nonce)
-        if received_c2_nonce != str(user_dict.temp_nonce):
+                                                     encrypted_n2)
+        if received_n2 != str(user_dict.temp_nonce):
             return False, 'The nonce encrypted with the session key is wrong!'
-        end_response_to_client = str(long(received_c2_nonce) + 1)
+        end_response_to_client = str(long(received_n2) + 1)
         return True, end_response_to_client
 
     # --------------------------- sending all logged in users to authenticated clients --------------------------- #
@@ -277,7 +277,7 @@ class Server:
         while True:
             command = raw_input()
             if command.strip() == 'exit':
-                print 'server shutting down'
+                print 'Shutting down the Server..'
                 self.sock.close()
                 os._exit(0)
 
@@ -292,7 +292,7 @@ class Server:
         return True
 
     def generate_challenge(self):
-        challenge = Utils.generate_nonce()
+        challenge = Crypto.generate_nonce()
         trunc_challenge = challenge & 0x0000ffffffffffffffffffffffffffff
         challenge_hash = Crypto.generate_hash(str(challenge))
         return challenge, challenge_hash, trunc_challenge
@@ -309,6 +309,10 @@ class Server:
         except socket.error:
             traceback.print_exc()
             print 'Server failed to start'
+
+    # -------------- override default function: will be invoked if inputting invalid command -------------- #
+    def default(self, line):
+        print 'Enter "exit" to stop the server'
 
 
 if __name__ == '__main__':

@@ -59,10 +59,10 @@ def substring_after(s, splitter):
 
 
 # ---------------------- Nonce related utils -----------------------#
-def generate_nonce(size=128):
-    nonce_str = os.urandom(size / 8)
-    nonce_num = long(nonce_str.encode('hex'), 16)
-    return nonce_num
+#def generate_nonce(size=128):
+#    nonce_str = os.urandom(size / 8)
+#    nonce_num = long(nonce_str.encode('hex'), 16)
+#    return nonce_num
 
 
 # def generate_challenge():

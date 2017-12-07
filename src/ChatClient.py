@@ -116,14 +116,19 @@ class Client(cmd.Cmd):
         return challenge
 
     def solve_server_challenge(self, challenge):
-        trunc_challenge = Utils.substring_before(challenge, LINE_SEPARATOR)
-        challenge_hash = Utils.substring_after(challenge, LINE_SEPARATOR)
+        index = challenge.find(LINE_SEPARATOR)
+        if index != -1:
+            trunc_challenge = challenge[0:index].strip()
+            challenge_hash = challenge[index:].strip()
+        else:
+            trunc_challenge = ''
+            challenge_hash = ''
 
         solved_challenge = self.solve_challenge(trunc_challenge, challenge_hash)
         return solved_challenge
 
     def start_authentication(self, solved_challenge, user_name, password):
-        n1 = Utils.generate_nonce()
+        n1 = Crypto.generate_nonce()
         send_msg = AuthStartMsg(
             user_name,
             password,
@@ -149,7 +154,7 @@ class Client(cmd.Cmd):
         msg_type = msg['type']
         data = msg['data']
         if msg_type == MessageType.RES_FOR_INVALID_REQ:
-            print data
+            #print data
             return False, None, None
         decrypted_auth_start_response = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
         res_obj = pickle.loads(decrypted_auth_start_response)
@@ -179,7 +184,7 @@ class Client(cmd.Cmd):
             self._send_sym_encrypted_msg_to_server(MessageType.LIST_USERS, 'list')
             validate_result, list_response = self._recv_sym_encrypted_msg_from_server()
             if validate_result:
-                print MSG_PROMPT + 'All online users: ' + ', '.join(list_response.user_names.split(SPACE_SEPARATOR))
+                print MSG_PROMPT + 'Online users: ' + ', '.join(list_response.user_names.split(SPACE_SEPARATOR))
                 # set the client information in self.online_list
                 parsed_list_response = list_response.user_names.split(SPACE_SEPARATOR)
                 for user in parsed_list_response:
@@ -193,8 +198,13 @@ class Client(cmd.Cmd):
     # --------------------------- send message to another user ------------------------- #
     def do_send(self, arg):
         try:
-            receiver_name = Utils.substring_before(arg, SPACE_SEPARATOR)
-            msg = Utils.substring_after(arg, SPACE_SEPARATOR)
+            index = arg.find(SPACE_SEPARATOR)
+            if index != -1:
+                receiver_name = arg[0:index].strip()
+                msg = arg[index:].strip()
+            else:
+                receiver_name = ''
+                msg = ''
             if receiver_name == self.user_name:
                 print 'Cannot send message to yourself!'
             elif receiver_name not in self.online_list:
@@ -238,7 +248,7 @@ class Client(cmd.Cmd):
     # --------------------------- build connection with the user ------------------------- #
     def _connect_to_user(self, target_user_info):
         # start authentication process
-        target_user_info.n3 = Utils.generate_nonce()
+        target_user_info.n3 = Crypto.generate_nonce()
         msg = ConnStartMsg(
             self.user_name,
             self.client_ip,
@@ -315,7 +325,7 @@ class Client(cmd.Cmd):
         self.online_list[conn_start_msg.user_name] = src_user_info
         # send connection back message to the initiator
         n3 = conn_start_msg.n3
-        src_user_info.n4 = Utils.generate_nonce()
+        src_user_info.n4 = Crypto.generate_nonce()
         iv = base64.b64encode(os.urandom(16))
         conn_back_msg = ConnBackMsg(
             self.user_name,
@@ -371,7 +381,7 @@ class Client(cmd.Cmd):
     def do_logout(self, arg):
         try:
             if self._logout_from_server():
-                print '<' + self.user_name + '> successfully logout.'
+                print '<' + self.user_name + '> successfully logged out.'
                 self._disconnect_all_users()
                 self.client_sock.close()
                 self.recv_sock.close()
@@ -423,7 +433,7 @@ class Client(cmd.Cmd):
         msg_type = msg['type']
         data = msg['data']
         if msg_type == MessageType.RES_FOR_INVALID_REQ:
-            print data
+            #print data
             return False, data
         else:
             iv, encrypted_response_without_iv = data.split(LINE_SEPARATOR)
@@ -458,10 +468,10 @@ class Client(cmd.Cmd):
 
     # -------------- override default function: will be invoked if inputting invalid command -------------- #
     def default(self, line):
-        print '<------ Only the following 3 commands are supported------>'
+        print '<------ Commands supported ------>'
         print '1. list: list all online user names'
         print '2. send <username> <message>: send message to another online user'
-        print '3. logout: logout from the server'
+        print '3. logout: logout current user from the server'
         print '<-------------------------------------------------------->'
 
 
