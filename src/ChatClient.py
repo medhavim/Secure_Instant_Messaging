@@ -10,10 +10,11 @@ import Message
 import time
 import ast
 import getpass
+import json
 from Message import SEPARATOR, MessageType, AuthStartMsg, MAX_MSG_SIZE, SEPARATOR1, ConnStartMsg, ConnBackMsg, \
     ConnEndMsg, TextMsg, DisconnMsg
 
-MAX_RETRY_LOGIN_TIMES = 3
+MAX_LOGIN_ATTEMPTS = 3
 CMD_PROMPT = '>> '
 MSG_PROMPT = '<< '
 
@@ -60,17 +61,18 @@ class Client(cmd.Cmd):
 
     # --------------------------- login to the server ------------------------- #
     def login(self):
-        login_times = 0
-        logined = False
-        while login_times < MAX_RETRY_LOGIN_TIMES and not logined:
-            logined, user_name = self._auth_to_server()
-            login_times += 1
-            if logined:
+        login_attempts = 0
+        loggedIn = False
+        while login_attempts < MAX_LOGIN_ATTEMPTS and not loggedIn:
+            loggedIn, user_name = self._auth_to_server()
+            login_attempts += 1
+            if loggedIn:
                 self.user_name = user_name
                 client.prompt = self.user_name + CMD_PROMPT
                 client.cmdloop('<' + user_name + '> successfully logged in')
-        if not logined:
-            print 'Your login try has exceeded the maximum allowed times, exiting the program. Please try later!'
+        if not loggedIn:
+            print 'Exceeded the maximum login attempts, exiting the program.'
+	    print 'Please try again later!'
             self.recv_sock.close()
             os._exit(0)
 
@@ -104,7 +106,11 @@ class Client(cmd.Cmd):
             return login_result, user_name
 
     def _auth_init(self):
-        init_msg = Message.dumps(MessageType.INIT)
+	msg = dict()
+    	msg['type'] = MessageType.INIT 
+    	msg['data'] = '' 
+	init_msg = json.dumps(msg)
+        #init_msg = Message.dumps(MessageType.INIT)
         self.client_sock.sendall(init_msg)
         auth_init_response = self.client_sock.recv(MAX_MSG_SIZE)
         return auth_init_response
@@ -129,13 +135,20 @@ class Client(cmd.Cmd):
         msg_str = Utils.serialize_obj(msg)
         encrypted_msg_str = Crypto.asymmetric_encrypt(self.server_pub_key, msg_str)
         full_msg = solved_challenge + SEPARATOR + encrypted_msg_str
-        auth_start_msg = Message.dumps(MessageType.AUTH_START, full_msg)
+	msg = dict()
+        msg['type'] = MessageType.AUTH_START
+        msg['data'] = full_msg
+        auth_start_msg = json.dumps(msg)
+        #auth_start_msg = Message.dumps(MessageType.AUTH_START, full_msg)
         self.client_sock.sendall(auth_start_msg)
         auth_start_response = self.client_sock.recv(MAX_MSG_SIZE)
         return c1_nonce, auth_start_response
 
     def _handle_auth_start_response(self, expected_c1_nonce, auth_start_response):
-        tpe, data = Message.loads(auth_start_response)
+        msg = json.loads(auth_start_response)
+        tpe = msg['type']
+        data = msg['data']
+	#tpe, data = Message.loads(auth_start_response)
         if tpe == MessageType.RES_FOR_INVALID_REQ:
             print data
             return False, None, None
@@ -150,9 +163,13 @@ class Client(cmd.Cmd):
     def _auth_end(self, c2_nonce):
         iv = Utils.generate_iv()
         encrypted_c2_nonce = Crypto.symmetric_encrypt(self.shared_dh_key, iv, c2_nonce)
-        auth_end_msg = Message.dumps(MessageType.AUTH_END,
-                                     Crypto.asymmetric_encrypt(self.server_pub_key, iv) +
-                                     SEPARATOR + encrypted_c2_nonce)
+        msg = dict()
+        msg['type'] = MessageType.AUTH_END
+        msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + SEPARATOR + encrypted_c2_nonce 
+        auth_end_msg = json.dumps(msg)
+	#auth_end_msg = Message.dumps(MessageType.AUTH_END,
+        #                             Crypto.asymmetric_encrypt(self.server_pub_key, iv) +
+        #                             SEPARATOR + encrypted_c2_nonce)
         self.client_sock.sendall(auth_end_msg)
         validate_result, decrypted_nonce_response = self._recv_sym_encrypted_msg_from_server(False)
         if validate_result and long(decrypted_nonce_response) == long(c2_nonce) + 1:
@@ -166,7 +183,7 @@ class Client(cmd.Cmd):
             self._send_sym_encrypted_msg_to_server(MessageType.LIST_USERS, 'list')
             validate_result, list_response = self._recv_sym_encrypted_msg_from_server()
             if validate_result:
-                print MSG_PROMPT + 'Current logged in users: ' + ', '.join(list_response.user_names.split(SEPARATOR1))
+                print MSG_PROMPT + 'All online users: ' + ', '.join(list_response.user_names.split(SEPARATOR1))
                 # set the client information in self.online_list
                 parsed_list_response = list_response.user_names.split(SEPARATOR1)
                 for user in parsed_list_response:
@@ -175,7 +192,7 @@ class Client(cmd.Cmd):
         except (socket.error, ValueError) as e:
             self._re_login()
         except:
-            print 'Unknown error happens when trying to get user name list from the server!'
+            print 'Unknown error while trying to get online user list from the server!'
 
     # --------------------------- send message to another user ------------------------- #
     def do_send(self, arg):
@@ -266,7 +283,10 @@ class Client(cmd.Cmd):
             if not msg:
                 break
             # print 'Receive message from ', addr, ':\n', msg
-            tpe, data = Message.loads(msg)
+            #tpe, data = Message.loads(msg)
+	    msg = json.loads(msg)
+       	    tpe = msg['type']
+            data = msg['data']
             decrypted_data = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
             msg_obj = Utils.deserialize_obj(decrypted_data)
             # if the message's timestamp is invalid
@@ -393,14 +413,21 @@ class Client(cmd.Cmd):
         iv = Utils.generate_iv()
         plain_msg = msg + SEPARATOR + str(send_time)
         encrypted_msg = Crypto.symmetric_encrypt(self.shared_dh_key, iv, plain_msg)
-        final_msg = Message.dumps(message_type,
-                                  Crypto.asymmetric_encrypt(self.server_pub_key, iv) +
-                                  SEPARATOR + encrypted_msg)
+	msg = dict()
+        msg['type'] = message_type 
+        msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + SEPARATOR + encrypted_msg
+        final_msg = json.dumps(msg)
+        #final_msg = Message.dumps(message_type,
+        #                          Crypto.asymmetric_encrypt(self.server_pub_key, iv) +
+        #                          SEPARATOR + encrypted_msg)
         self.client_sock.sendall(final_msg)
 
     def _recv_sym_encrypted_msg_from_server(self, validate_timestamp=True):
         encrypted_server_response = self.client_sock.recv(MAX_MSG_SIZE)
-        tpe, data = Message.loads(encrypted_server_response)
+        #tpe, data = Message.loads(encrypted_server_response)
+	msg = json.loads(encrypted_server_response)
+        tpe = msg['type']
+        data = msg['data']
         if tpe == MessageType.RES_FOR_INVALID_REQ:
             print data
             return False, data
@@ -418,7 +445,11 @@ class Client(cmd.Cmd):
     def _send_encrypted_msg_to_user(self, target_user_info, message_type, msg_obj):
         encrypted_msg = Crypto.asymmetric_encrypt(target_user_info.pub_key,
                                                   Utils.serialize_obj(msg_obj))
-        msg = Message.dumps(message_type, encrypted_msg)
+        msg = dict()
+        msg['type'] = message_type 
+        msg['data'] = encrypted_msg
+        msg = json.dumps(msg)
+	#msg = Message.dumps(message_type, encrypted_msg)
         self.send_sock.sendto(msg, target_user_info.address)
 
     @staticmethod
@@ -443,7 +474,7 @@ class Client(cmd.Cmd):
 
 if __name__ == '__main__':
     config = ConfigParser.RawConfigParser()
-    config.read('src/configuration/client.cfg')
+    config.read('configuration/client.cfg')
     # server_ip = config.get('server_info', 'ip')
     server_ip = Crypto.get_local_ip()
     server_port = config.getint('server_info', 'port')

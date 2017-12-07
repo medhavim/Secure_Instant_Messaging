@@ -27,18 +27,18 @@ class MessageType(object):
     RES_FOR_VALID_REQ = 'RES_FOR_VALID_REQ'
 
 
-def loads(msg):
-    json_obj = json.loads(msg)
-    tpe = json_obj['type']
-    data = json_obj['data']
-    return tpe, data
+#def loads(msg):
+#    json_obj = json.loads(msg#)
+#    tpe = json_obj['type']
+#    data = json_obj['data']
+#    return tpe, data
 
 
-def dumps(tpe, data=''):
-    msg = dict()
-    msg['type'] = tpe
-    msg['data'] = data
-    return json.dumps(msg)
+#def dumps(tpe, data=''):
+#    msg = dict()
+#    msg['type'] = tpe
+#    msg['data'] = data
+#    return json.dumps(msg)
 
 
 class AuthStartMsg(object):
