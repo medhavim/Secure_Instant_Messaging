@@ -102,8 +102,8 @@ class Server:
                                 self.users_loggedin[client_addr].state == UserState.AUTHENTICATED:
                     iv, response_from_client = data.split(LINE_SEPARATOR)
                     user_dict = self.users_loggedin[client_addr]
-                    decrypted_response_from_client = Crypto.symmetric_decrypt(user_dict.secret_key,
-                                                             Crypto.asymmetric_decrypt(self.private_key, iv),
+                    decrypted_response_from_client = Crypto.symmetric_decryption(user_dict.secret_key,
+                                                             Crypto.asymmetric_decryption(self.private_key, iv),
                                                              response_from_client)
                     # sending response for list message
                     if msg_type == MessageType.LIST_USERS:
@@ -141,7 +141,7 @@ class Server:
         else:
             challenge = ''
             msg = ''
-        response_from_client = pickle.loads(Crypto.asymmetric_decrypt(self.private_key, msg))
+        response_from_client = pickle.loads(Crypto.asymmetric_decryption(self.private_key, msg))
         # check if the response given to the challenge is correct
         if challenge != self.users_loggedin[client_address].challenge:
             return False, 'Response to the given challenge is incorrect!'
@@ -170,7 +170,7 @@ class Server:
         current_user.temp_nonce = n2
         serialized_dh_pub_key = Crypto.serialize_pub_key(dh_pub_key)
         response_to_client = pickle.dumps(AuthStartRes(serialized_dh_pub_key, n1, n2), pickle.HIGHEST_PROTOCOL)
-        encrypted_response_to_client = Crypto.asymmetric_encrypt(current_user.rsa_pub_key, response_to_client)
+        encrypted_response_to_client = Crypto.asymmetric_encryption(current_user.rsa_pub_key, response_to_client)
         return True, encrypted_response_to_client
 
     def check_password(self, user_name, password):
@@ -184,8 +184,8 @@ class Server:
     def client_handler_for_auth_end(self, client_address, data):
         user_dict = self.users_loggedin[client_address]
         iv, encrypted_n2 = data.split(LINE_SEPARATOR)
-        received_n2 = Crypto.symmetric_decrypt(user_dict.secret_key,
-                                                     Crypto.asymmetric_decrypt(self.private_key, iv),
+        received_n2 = Crypto.symmetric_decryption(user_dict.secret_key,
+                                                     Crypto.asymmetric_decryption(self.private_key, iv),
                                                      encrypted_n2)
         if received_n2 != str(user_dict.temp_nonce):
             return False, 'The nonce encrypted with the session key is wrong!'
@@ -258,10 +258,10 @@ class Server:
         if include_timestamp:
             msg.timestamp = time.time()
             msg = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
-        encrypted_res_message = Crypto.symmetric_encrypt(request_user_info.secret_key, iv, msg)
+        encrypted_res_message = Crypto.symmetric_encryption(request_user_info.secret_key, iv, msg)
         send_res_msg = dict()
         send_res_msg['type'] = MessageType.RES_FOR_VALID_REQ
-        send_res_msg['data'] = Crypto.asymmetric_encrypt(request_user_info.rsa_pub_key, iv) + \
+        send_res_msg['data'] = Crypto.asymmetric_encryption(request_user_info.rsa_pub_key, iv) + \
                                LINE_SEPARATOR + encrypted_res_message
         connection.sendall(json.dumps(send_res_msg))
 

@@ -36,7 +36,7 @@ def sign(private_key, plain_text):
 
 
 # use AES and CTR mode to symmetrically encrypt the plain text, and return the encryption result
-def symmetric_encrypt(key, iv, ori_text):
+def symmetric_encryption(key, iv, ori_text):
     cipher = Cipher(algorithms.AES(base64.b64decode(key)), modes.CTR(base64.b64decode(iv)), backend=default_backend())
     encryptor = cipher.encryptor()
     cipher_text = encryptor.update(ori_text) + encryptor.finalize()
@@ -44,7 +44,7 @@ def symmetric_encrypt(key, iv, ori_text):
 
 
 # use AES and CTR mode to symmetrically decrypt the encrypted text, and return the decryption result
-def symmetric_decrypt(key, iv, encrypted_text):
+def symmetric_decryption(key, iv, encrypted_text):
     cipher = Cipher(algorithms.AES(base64.b64decode(key)), modes.CTR(base64.b64decode(iv)), backend=default_backend())
     decryptor = cipher.decryptor()
     plain_text = decryptor.update(base64.b64decode(encrypted_text)) + decryptor.finalize()
@@ -52,7 +52,7 @@ def symmetric_decrypt(key, iv, encrypted_text):
 
 
 # asymmetrically encrypt the given message with rsa
-def asymmetric_encrypt(public_key, message):
+def asymmetric_encryption(public_key, message):
     key_size = public_key.key_size
     seg_size = key_size / 8 - 42
     cipher_text = ''
@@ -72,7 +72,7 @@ def asymmetric_encrypt(public_key, message):
 
 
 # asymmetrically decrypt the given message with rsa
-def asymmetric_decrypt(private_key, encrypted_msg):
+def asymmetric_decryption(private_key, encrypted_msg):
     key_size = private_key.key_size
     encrypted_seg_size = (key_size / 8 - 42) * 2
     plain_text = ''

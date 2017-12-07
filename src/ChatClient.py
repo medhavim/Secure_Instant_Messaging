@@ -140,7 +140,7 @@ class Client(cmd.Cmd):
             n1
         )
         msg_str = pickle.dumps(send_msg, pickle.HIGHEST_PROTOCOL)
-        encrypted_msg = Crypto.asymmetric_encrypt(self.server_pub_key, msg_str)
+        encrypted_msg = Crypto.asymmetric_encryption(self.server_pub_key, msg_str)
         full_msg = solved_challenge + LINE_SEPARATOR + encrypted_msg
         msg = dict()
         msg['type'] = MessageType.AUTH_START
@@ -157,7 +157,7 @@ class Client(cmd.Cmd):
         if msg_type == MessageType.RES_FOR_INVALID_REQ:
             #print data
             return False, None, None
-        decrypted_auth_start_response = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
+        decrypted_auth_start_response = Crypto.asymmetric_decryption(self.rsa_pri_key, data)
         res_obj = pickle.loads(decrypted_auth_start_response)
         server_dh_key, n1, n2 = res_obj.dh_pub_key, res_obj.n1, res_obj.n2
         if str(expected_n1) != str(n1):
@@ -167,10 +167,10 @@ class Client(cmd.Cmd):
 
     def end_authentication(self, n2):
         iv = base64.b64encode(os.urandom(16))
-        encrypted_n2 = Crypto.symmetric_encrypt(self.shared_dh_key, iv, n2)
+        encrypted_n2 = Crypto.symmetric_encryption(self.shared_dh_key, iv, n2)
         msg = dict()
         msg['type'] = MessageType.AUTH_END
-        msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_n2
+        msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_n2
         auth_end_msg = json.dumps(msg)
         self.client_sock.sendall(auth_end_msg)
         validate_result, decrypted_nonce_response = self._recv_sym_encrypted_msg_from_server(False)
@@ -268,8 +268,8 @@ class Client(cmd.Cmd):
         sec_key = receiver_info.sec_key
         text_msg = TextMsg(
             self.user_name,
-            Crypto.asymmetric_encrypt(receiver_info.pub_key, iv),
-            Crypto.symmetric_encrypt(sec_key, iv, msg),
+            Crypto.asymmetric_encryption(receiver_info.pub_key, iv),
+            Crypto.symmetric_encryption(sec_key, iv, msg),
             Crypto.sign(self.rsa_pri_key, msg),
             time.time()
         )
@@ -293,7 +293,7 @@ class Client(cmd.Cmd):
             msg = json.loads(msg)
             msg_type = msg['type']
             data = msg['data']
-            decrypted_data = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
+            decrypted_data = Crypto.asymmetric_decryption(self.rsa_pri_key, data)
             msg_obj = pickle.loads(decrypted_data)
             # if the message's timestamp is invalid
             if not Crypto.validate_timestamp(msg_obj.timestamp):
@@ -331,7 +331,7 @@ class Client(cmd.Cmd):
         conn_back_msg = ConnBackMsg(
             self.user_name,
             iv,
-            Crypto.symmetric_encrypt(src_user_info.sec_key, iv, str(n3)),
+            Crypto.symmetric_encryption(src_user_info.sec_key, iv, str(n3)),
             src_user_info.n4,
             time.time()
         )
@@ -339,7 +339,7 @@ class Client(cmd.Cmd):
 
     def _handle_conn_back(self, conn_back_msg):
         user_info = self.online_list[conn_back_msg.user_name]
-        decrypted_n3 = Crypto.symmetric_decrypt(user_info.sec_key,
+        decrypted_n3 = Crypto.symmetric_decryption(user_info.sec_key,
                                                       conn_back_msg.iv,
                                                       conn_back_msg.encrypted_n3)
         if str(decrypted_n3) == str(user_info.n3):
@@ -349,14 +349,14 @@ class Client(cmd.Cmd):
             conn_end_msg = ConnEndMsg(
                 self.user_name,
                 iv,
-                Crypto.symmetric_encrypt(user_info.sec_key, iv, str(conn_back_msg.n4)),
+                Crypto.symmetric_encryption(user_info.sec_key, iv, str(conn_back_msg.n4)),
                 time.time()
             )
             self._send_encrypted_msg_to_user(user_info, MessageType.CONN_USER_END, conn_end_msg)
 
     def _handle_conn_end(self, conn_end_msg):
         user_info = self.online_list[conn_end_msg.user_name]
-        decrypted_n4 = Crypto.symmetric_decrypt(user_info.sec_key, conn_end_msg.iv,
+        decrypted_n4 = Crypto.symmetric_decryption(user_info.sec_key, conn_end_msg.iv,
                                                       conn_end_msg.encrypted_n4)
         if str(user_info.n4) == str(decrypted_n4):
             user_info.connected = True
@@ -365,9 +365,9 @@ class Client(cmd.Cmd):
         user_name = text_msg.user_name
         if user_name in self.online_list and self.online_list[user_name].connected:
             user_info = self.online_list[user_name]
-            iv = Crypto.asymmetric_decrypt(self.rsa_pri_key, text_msg.iv)
+            iv = Crypto.asymmetric_decryption(self.rsa_pri_key, text_msg.iv)
             encrypted_msg = text_msg.encrypted_msg
-            decrypted_msg = Crypto.symmetric_decrypt(user_info.sec_key, iv, encrypted_msg)
+            decrypted_msg = Crypto.symmetric_decryption(user_info.sec_key, iv, encrypted_msg)
             msg_signature = text_msg.msg_signature
             if Crypto.verify_signature(user_info.pub_key, decrypted_msg, msg_signature):
                 print '\n' + MSG_PROMPT + user_name + " has sent you: " + decrypted_msg
@@ -418,14 +418,11 @@ class Client(cmd.Cmd):
         send_time = time.time()
         iv = base64.b64encode(os.urandom(16))
         plain_msg = msg + LINE_SEPARATOR + str(send_time)
-        encrypted_msg = Crypto.symmetric_encrypt(self.shared_dh_key, iv, plain_msg)
+        encrypted_msg = Crypto.symmetric_encryption(self.shared_dh_key, iv, plain_msg)
         msg = dict()
         msg['type'] = message_type 
-        msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_msg
+        msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_msg
         final_msg = json.dumps(msg)
-        #final_msg = Message.dumps(message_type,
-        #                          Crypto.asymmetric_encrypt(self.server_pub_key, iv) +
-        #                          LINE_SEPARATOR + encrypted_msg)
         self.client_sock.sendall(final_msg)
 
     def _recv_sym_encrypted_msg_from_server(self, validate_timestamp=True):
@@ -438,8 +435,8 @@ class Client(cmd.Cmd):
             return False, data
         else:
             iv, encrypted_response_without_iv = data.split(LINE_SEPARATOR)
-            decrypted_response = Crypto.symmetric_decrypt(self.shared_dh_key,
-                                                          Crypto.asymmetric_decrypt(self.rsa_pri_key, iv),
+            decrypted_response = Crypto.symmetric_decryption(self.shared_dh_key,
+                                                          Crypto.asymmetric_decryption(self.rsa_pri_key, iv),
                                                           encrypted_response_without_iv)
             if validate_timestamp:
                 decrypted_response = pickle.loads(decrypted_response)
@@ -448,7 +445,7 @@ class Client(cmd.Cmd):
             return True, decrypted_response
 
     def _send_encrypted_msg_to_user(self, target_user_info, message_type, msg_obj):
-        encrypted_msg = Crypto.asymmetric_encrypt(target_user_info.pub_key,
+        encrypted_msg = Crypto.asymmetric_encryption(target_user_info.pub_key,
                                                   pickle.dumps(msg_obj, pickle.HIGHEST_PROTOCOL))
         msg = dict()
         msg['type'] = message_type 
