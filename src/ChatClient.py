@@ -9,7 +9,7 @@ import Utils
 import time
 import getpass
 import json
-from Message import SEPARATOR, MessageType, AuthStartMsg, MAX_MSG_SIZE, SEPARATOR1, ConnStartMsg, ConnBackMsg, \
+from Message import LINE_SEPARATOR, MessageType, AuthStartMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ConnStartMsg, ConnBackMsg, \
     ConnEndMsg, TextMsg, DisconnMsg
 
 MAX_LOGIN_ATTEMPTS = 3
@@ -112,12 +112,13 @@ class Client(cmd.Cmd):
         msg['data'] = ''
         init_msg = json.dumps(msg)
         self.client_sock.sendall(init_msg)
-        challenge = self.client_sock.recv(MAX_MSG_SIZE)
+        challenge = self.client_sock.recv(MAX_BUFFER_SIZE)
         return challenge
 
     def solve_server_challenge(self, challenge):
-        trunc_challenge = Utils.substring_before(challenge, SEPARATOR)
-        challenge_hash = Utils.substring_after(challenge, SEPARATOR)
+        trunc_challenge = Utils.substring_before(challenge, LINE_SEPARATOR)
+        challenge_hash = Utils.substring_after(challenge, LINE_SEPARATOR)
+
         solved_challenge = self.solve_challenge(trunc_challenge, challenge_hash)
         return solved_challenge
 
@@ -134,13 +135,13 @@ class Client(cmd.Cmd):
         )
         msg_str = pickle.dumps(send_msg, pickle.HIGHEST_PROTOCOL)
         encrypted_msg = Crypto.asymmetric_encrypt(self.server_pub_key, msg_str)
-        full_msg = solved_challenge + SEPARATOR + encrypted_msg
+        full_msg = solved_challenge + LINE_SEPARATOR + encrypted_msg
         msg = dict()
         msg['type'] = MessageType.AUTH_START
         msg['data'] = full_msg
         auth_start_msg = json.dumps(msg)
         self.client_sock.sendall(auth_start_msg)
-        server_auth_response = self.client_sock.recv(MAX_MSG_SIZE)
+        server_auth_response = self.client_sock.recv(MAX_BUFFER_SIZE)
         return n1, server_auth_response
 
     def get_server_shared_key(self, expected_n1, server_auth_response):
@@ -163,7 +164,7 @@ class Client(cmd.Cmd):
         encrypted_n2 = Crypto.symmetric_encrypt(self.shared_dh_key, iv, n2)
         msg = dict()
         msg['type'] = MessageType.AUTH_END
-        msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + SEPARATOR + encrypted_n2
+        msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_n2
         auth_end_msg = json.dumps(msg)
         self.client_sock.sendall(auth_end_msg)
         validate_result, decrypted_nonce_response = self._recv_sym_encrypted_msg_from_server(False)
@@ -178,9 +179,9 @@ class Client(cmd.Cmd):
             self._send_sym_encrypted_msg_to_server(MessageType.LIST_USERS, 'list')
             validate_result, list_response = self._recv_sym_encrypted_msg_from_server()
             if validate_result:
-                print MSG_PROMPT + 'All online users: ' + ', '.join(list_response.user_names.split(SEPARATOR1))
+                print MSG_PROMPT + 'All online users: ' + ', '.join(list_response.user_names.split(SPACE_SEPARATOR))
                 # set the client information in self.online_list
-                parsed_list_response = list_response.user_names.split(SEPARATOR1)
+                parsed_list_response = list_response.user_names.split(SPACE_SEPARATOR)
                 for user in parsed_list_response:
                     if user != self.user_name and user not in self.online_list:
                         self.online_list[user] = UserInfo()
@@ -192,8 +193,8 @@ class Client(cmd.Cmd):
     # --------------------------- send message to another user ------------------------- #
     def do_send(self, arg):
         try:
-            receiver_name = Utils.substring_before(arg, SEPARATOR1)
-            msg = Utils.substring_after(arg, SEPARATOR1)
+            receiver_name = Utils.substring_before(arg, SPACE_SEPARATOR)
+            msg = Utils.substring_after(arg, SPACE_SEPARATOR)
             if receiver_name == self.user_name:
                 print 'Cannot send message to yourself!'
             elif receiver_name not in self.online_list:
@@ -274,7 +275,7 @@ class Client(cmd.Cmd):
 
     def listen_for_message(self):
         while True:
-            msg, addr = self.recv_sock.recvfrom(MAX_MSG_SIZE)
+            msg, addr = self.recv_sock.recvfrom(MAX_BUFFER_SIZE)
             if not msg:
                 break
             print 'Receive message from ', addr, ':\n', msg
@@ -303,7 +304,7 @@ class Client(cmd.Cmd):
         ticket_signature = conn_start_msg.ticket_signature
         if not Crypto.verify_signature(self.server_pub_key, ticket, ticket_signature):
             return
-        src_user_name, sec_session_key, timestamp_to_expire = ticket.split(SEPARATOR1)
+        src_user_name, sec_session_key, timestamp_to_expire = ticket.split(SPACE_SEPARATOR)
         if src_user_name != conn_start_msg.user_name or float(timestamp_to_expire) < time.time():
             return
         src_user_info = UserInfo()
@@ -405,19 +406,19 @@ class Client(cmd.Cmd):
     def _send_sym_encrypted_msg_to_server(self, message_type, msg):
         send_time = time.time()
         iv = base64.b64encode(os.urandom(16))
-        plain_msg = msg + SEPARATOR + str(send_time)
+        plain_msg = msg + LINE_SEPARATOR + str(send_time)
         encrypted_msg = Crypto.symmetric_encrypt(self.shared_dh_key, iv, plain_msg)
         msg = dict()
         msg['type'] = message_type 
-        msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + SEPARATOR + encrypted_msg
+        msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_msg
         final_msg = json.dumps(msg)
         #final_msg = Message.dumps(message_type,
         #                          Crypto.asymmetric_encrypt(self.server_pub_key, iv) +
-        #                          SEPARATOR + encrypted_msg)
+        #                          LINE_SEPARATOR + encrypted_msg)
         self.client_sock.sendall(final_msg)
 
     def _recv_sym_encrypted_msg_from_server(self, validate_timestamp=True):
-        encrypted_server_response = self.client_sock.recv(MAX_MSG_SIZE)
+        encrypted_server_response = self.client_sock.recv(MAX_BUFFER_SIZE)
         msg = json.loads(encrypted_server_response)
         msg_type = msg['type']
         data = msg['data']
@@ -425,7 +426,7 @@ class Client(cmd.Cmd):
             print data
             return False, data
         else:
-            iv, encrypted_response_without_iv = data.split(SEPARATOR)
+            iv, encrypted_response_without_iv = data.split(LINE_SEPARATOR)
             decrypted_response = Crypto.symmetric_decrypt(self.shared_dh_key,
                                                           Crypto.asymmetric_decrypt(self.rsa_pri_key, iv),
                                                           encrypted_response_without_iv)
