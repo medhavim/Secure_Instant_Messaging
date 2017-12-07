@@ -83,18 +83,18 @@ def generate_nonce(size=128):
 #         n += 1
 
 
-def generate_iv():
-    return base64.b64encode(os.urandom(16))
+#def generate_iv():
+#    return base64.b64encode(os.urandom(16))
 
 
-def generate_symmetric_key():
-    return base64.b64encode(os.urandom(32))
+#def generate_symmetric_key():
+#    return base64.b64encode(os.urandom(32))
 
 
 # ---------------------- Object serialization related utils -----------------------#
-def serialize_obj(obj):
-    return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
+#def serialize_obj(obj):
+#    return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
 
 
-def deserialize_obj(obj_str):
-    return pickle.loads(obj_str)
+#def deserialize_obj(obj_str):
+#    return pickle.loads(obj_str)

@@ -1,4 +1,4 @@
-import ConfigParser
+import ConfigParser, base64, pickle
 import socket
 import cmd
 import threading
@@ -132,7 +132,7 @@ class Client(cmd.Cmd):
             self.client_port,
             c1_nonce
         )
-        msg_str = Utils.serialize_obj(msg)
+        msg_str = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
         encrypted_msg_str = Crypto.asymmetric_encrypt(self.server_pub_key, msg_str)
         full_msg = solved_challenge + SEPARATOR + encrypted_msg_str
 	msg = dict()
@@ -153,7 +153,7 @@ class Client(cmd.Cmd):
             print data
             return False, None, None
         decrypted_auth_start_response = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
-        res_obj = Utils.deserialize_obj(decrypted_auth_start_response)
+        res_obj = pickle.loads(decrypted_auth_start_response)
         server_dh_key, c1_nonce, c2_nonce = res_obj.dh_pub_key, res_obj.c1_nonce, res_obj.c2_nonce
         if str(expected_c1_nonce) != str(c1_nonce):
             return False, None, None
@@ -161,7 +161,7 @@ class Client(cmd.Cmd):
         return True, shared_dh_key, str(c2_nonce)
 
     def _auth_end(self, c2_nonce):
-        iv = Utils.generate_iv()
+        iv = base64.b64encode(os.urandom(16))
         encrypted_c2_nonce = Crypto.symmetric_encrypt(self.shared_dh_key, iv, c2_nonce)
         msg = dict()
         msg['type'] = MessageType.AUTH_END
@@ -257,7 +257,7 @@ class Client(cmd.Cmd):
 
     # --------------------------- send the final message to the target user ------------------------- #
     def _send_text_msg(self, msg, receiver_info):
-        iv = Utils.generate_iv()
+        iv = base64.b64encode(os.urandom(16))
         sec_key = receiver_info.sec_key
         text_msg = TextMsg(
             self.user_name,
@@ -288,7 +288,7 @@ class Client(cmd.Cmd):
        	    tpe = msg['type']
             data = msg['data']
             decrypted_data = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
-            msg_obj = Utils.deserialize_obj(decrypted_data)
+            msg_obj = pickle.loads(decrypted_data)
             # if the message's timestamp is invalid
             if not Crypto.validate_timestamp(msg_obj.timestamp):
                 print 'Timestamp of the message from another user is invalid, drop the message!'
@@ -321,7 +321,7 @@ class Client(cmd.Cmd):
         # send connection back message to the initiator
         c3_nonce = conn_start_msg.c3_nonce
         src_user_info.c4_nonce = Utils.generate_nonce()
-        iv = Utils.generate_iv()
+        iv = base64.b64encode(os.urandom(16))
         conn_back_msg = ConnBackMsg(
             self.user_name,
             iv,
@@ -339,7 +339,7 @@ class Client(cmd.Cmd):
         if str(decrypted_c3_nonce) == str(user_info.c3_nonce):
             # print 'Successfully connected to the user <' + conn_back_msg.user_name + '>'
             user_info.connected = True
-            iv = Utils.generate_iv()
+            iv = base64.b64encode(os.urandom(16))
             conn_end_msg = ConnEndMsg(
                 self.user_name,
                 iv,
@@ -410,7 +410,7 @@ class Client(cmd.Cmd):
     # --------------------------- common functions for message exchange ------------------------- #
     def _send_sym_encrypted_msg_to_server(self, message_type, msg):
         send_time = time.time()
-        iv = Utils.generate_iv()
+        iv = base64.b64encode(os.urandom(16))
         plain_msg = msg + SEPARATOR + str(send_time)
         encrypted_msg = Crypto.symmetric_encrypt(self.shared_dh_key, iv, plain_msg)
 	msg = dict()
@@ -437,14 +437,14 @@ class Client(cmd.Cmd):
                                                           Crypto.asymmetric_decrypt(self.rsa_pri_key, iv),
                                                           encrypted_response_without_iv)
             if validate_timestamp:
-                decrypted_response = Utils.deserialize_obj(decrypted_response)
+                decrypted_response = pickle.loads(decrypted_response)
                 if not Crypto.validate_timestamp(decrypted_response.timestamp):
                     return False, None
             return True, decrypted_response
 
     def _send_encrypted_msg_to_user(self, target_user_info, message_type, msg_obj):
         encrypted_msg = Crypto.asymmetric_encrypt(target_user_info.pub_key,
-                                                  Utils.serialize_obj(msg_obj))
+                                                  pickle.dumps(msg_obj, pickle.HIGHEST_PROTOCOL))
         msg = dict()
         msg['type'] = message_type 
         msg['data'] = encrypted_msg
