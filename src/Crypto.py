@@ -190,7 +190,6 @@ def load_public_key(key_file):
         return deserialize_pub_key(base64.b64encode(public_key_str))
 
 def get_local_ip():
-    # get local ip address by trying to connect to the DNS of google
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
     local_ip = s.getsockname()[0]

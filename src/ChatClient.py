@@ -72,7 +72,7 @@ class Client(cmd.Cmd):
                 client.cmdloop('<' + user_name + '> successfully logged in')
         if not loggedIn:
             print 'Exceeded the maximum login attempts, exiting the program.'
-	    print 'Please try again later!'
+            print 'Please try again later!'
             self.recv_sock.close()
             os._exit(0)
 
@@ -106,11 +106,10 @@ class Client(cmd.Cmd):
             return login_result, user_name
 
     def _auth_init(self):
-	msg = dict()
-    	msg['type'] = MessageType.INIT 
-    	msg['data'] = '' 
-	init_msg = json.dumps(msg)
-        #init_msg = Message.dumps(MessageType.INIT)
+        msg = dict()
+        msg['type'] = MessageType.INIT
+        msg['data'] = ''
+        init_msg = json.dumps(msg)
         self.client_sock.sendall(init_msg)
         auth_init_response = self.client_sock.recv(MAX_MSG_SIZE)
         return auth_init_response
@@ -135,7 +134,7 @@ class Client(cmd.Cmd):
         msg_str = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
         encrypted_msg_str = Crypto.asymmetric_encrypt(self.server_pub_key, msg_str)
         full_msg = solved_challenge + SEPARATOR + encrypted_msg_str
-	msg = dict()
+        msg = dict()
         msg['type'] = MessageType.AUTH_START
         msg['data'] = full_msg
         auth_start_msg = json.dumps(msg)
@@ -146,10 +145,9 @@ class Client(cmd.Cmd):
 
     def _handle_auth_start_response(self, expected_c1_nonce, auth_start_response):
         msg = json.loads(auth_start_response)
-        tpe = msg['type']
+        msg_type = msg['type']
         data = msg['data']
-	#tpe, data = Message.loads(auth_start_response)
-        if tpe == MessageType.RES_FOR_INVALID_REQ:
+        if msg_type == MessageType.RES_FOR_INVALID_REQ:
             print data
             return False, None, None
         decrypted_auth_start_response = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
@@ -167,9 +165,6 @@ class Client(cmd.Cmd):
         msg['type'] = MessageType.AUTH_END
         msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + SEPARATOR + encrypted_c2_nonce 
         auth_end_msg = json.dumps(msg)
-	#auth_end_msg = Message.dumps(MessageType.AUTH_END,
-        #                             Crypto.asymmetric_encrypt(self.server_pub_key, iv) +
-        #                             SEPARATOR + encrypted_c2_nonce)
         self.client_sock.sendall(auth_end_msg)
         validate_result, decrypted_nonce_response = self._recv_sym_encrypted_msg_from_server(False)
         if validate_result and long(decrypted_nonce_response) == long(c2_nonce) + 1:
@@ -282,10 +277,9 @@ class Client(cmd.Cmd):
             msg, addr = self.recv_sock.recvfrom(MAX_MSG_SIZE)
             if not msg:
                 break
-            # print 'Receive message from ', addr, ':\n', msg
-            #tpe, data = Message.loads(msg)
-	    msg = json.loads(msg)
-       	    tpe = msg['type']
+            print 'Receive message from ', addr, ':\n', msg
+            msg = json.loads(msg)
+            msg_type = msg['type']
             data = msg['data']
             decrypted_data = Crypto.asymmetric_decrypt(self.rsa_pri_key, data)
             msg_obj = pickle.loads(decrypted_data)
@@ -293,15 +287,15 @@ class Client(cmd.Cmd):
             if not Crypto.validate_timestamp(msg_obj.timestamp):
                 print 'Timestamp of the message from another user is invalid, drop the message!'
                 continue
-            if tpe == MessageType.CONN_USER_START:
+            if msg_type == MessageType.CONN_USER_START:
                 self._handle_conn_start(msg_obj)
-            elif tpe == MessageType.CONN_USER_RES:
+            elif msg_type == MessageType.CONN_USER_RES:
                 self._handle_conn_back(msg_obj)
-            elif tpe == MessageType.CONN_USER_END:
+            elif msg_type == MessageType.CONN_USER_END:
                 self._handle_conn_end(msg_obj)
-            elif tpe == MessageType.DIS_CONN:
+            elif msg_type == MessageType.DIS_CONN:
                 self._handle_disconn_msg(msg_obj)
-            elif tpe == MessageType.TEXT_MSG:
+            elif msg_type == MessageType.TEXT_MSG:
                 self._handle_text_msg(msg_obj)
 
     def _handle_conn_start(self, conn_start_msg):
@@ -413,7 +407,7 @@ class Client(cmd.Cmd):
         iv = base64.b64encode(os.urandom(16))
         plain_msg = msg + SEPARATOR + str(send_time)
         encrypted_msg = Crypto.symmetric_encrypt(self.shared_dh_key, iv, plain_msg)
-	msg = dict()
+        msg = dict()
         msg['type'] = message_type 
         msg['data'] = Crypto.asymmetric_encrypt(self.server_pub_key, iv) + SEPARATOR + encrypted_msg
         final_msg = json.dumps(msg)
@@ -424,11 +418,10 @@ class Client(cmd.Cmd):
 
     def _recv_sym_encrypted_msg_from_server(self, validate_timestamp=True):
         encrypted_server_response = self.client_sock.recv(MAX_MSG_SIZE)
-        #tpe, data = Message.loads(encrypted_server_response)
-	msg = json.loads(encrypted_server_response)
-        tpe = msg['type']
+        msg = json.loads(encrypted_server_response)
+        msg_type = msg['type']
         data = msg['data']
-        if tpe == MessageType.RES_FOR_INVALID_REQ:
+        if msg_type == MessageType.RES_FOR_INVALID_REQ:
             print data
             return False, data
         else:
@@ -449,7 +442,6 @@ class Client(cmd.Cmd):
         msg['type'] = message_type 
         msg['data'] = encrypted_msg
         msg = json.dumps(msg)
-	#msg = Message.dumps(message_type, encrypted_msg)
         self.send_sock.sendto(msg, target_user_info.address)
 
     @staticmethod

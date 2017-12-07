@@ -58,7 +58,7 @@ class Server:
                 users_info[username] = salt_and_hash
         return users_info
 
-    def client_handler(self, connection, client_address):
+    def client_handler(self, connection, client_addr):
         try:
             while True:
                 msg = connection.recv(MAX_MSG_SIZE)
@@ -69,66 +69,66 @@ class Server:
                 data = msg['data']
                 # ----------------- handle messages sent from unauthenticated users --------------------#
                 # handle authentication init message
-                if msg_type == MessageType.INIT and client_address not in self.users_loggedin:
-                    print 'authentication init message received from ', client_address
-                    self.client_handler_for_init(connection, client_address)
+                if msg_type == MessageType.INIT and client_addr not in self.users_loggedin:
+                    print 'authentication init message received from ', client_addr
+                    self.client_handler_for_init(connection, client_addr)
                 # handle authentication start message
-                elif msg_type == MessageType.AUTH_START and client_address in self.users_loggedin \
-                        and self.users_loggedin[client_address].state == UserState.INIT:
-                    print 'authentication start message received from ', client_address
-                    ver_result, response_msg = self.client_handler_for_auth_start(client_address, data)
+                elif msg_type == MessageType.AUTH_START and client_addr in self.users_loggedin \
+                        and self.users_loggedin[client_addr].state == UserState.INIT:
+                    print 'authentication start message received from ', client_addr
+                    ver_result, response_msg = self.client_handler_for_auth_start(client_addr, data)
                     msg = dict()
                     msg['data'] = response_msg
                     if not ver_result:
                         msg['type'] = MessageType.RES_FOR_INVALID_REQ
                         connection.sendall(json.dumps(msg))
-                        self.client_error_handler(connection, client_address)
+                        self.client_error_handler(connection, client_addr)
                         break
                     msg['type'] = MessageType.RES_FOR_VALID_REQ
                     connection.sendall(json.dumps(msg))
                 # handle authentication end message
-                elif msg_type == MessageType.AUTH_END and client_address in self.users_loggedin \
-                        and self.users_loggedin[client_address].state == UserState.VERIFIED:
-                    print 'authentication end message received from ', client_address
-                    auth_result, response_msg = self.client_handler_for_auth_end(client_address, data)
+                elif msg_type == MessageType.AUTH_END and client_addr in self.users_loggedin \
+                        and self.users_loggedin[client_addr].state == UserState.VERIFIED:
+                    print 'authentication end message received from ', client_addr
+                    auth_result, response_msg = self.client_handler_for_auth_end(client_addr, data)
                     if not auth_result:
                         msg = dict()
                         msg['type'] = MessageType.RES_FOR_INVALID_REQ
                         msg['data'] = response_msg
                         connection.sendall(json.dumps(msg))
-                        self.client_error_handler(connection, client_address)
+                        self.client_error_handler(connection, client_addr)
                         break
-                    self.users_loggedin[client_address].state = UserState.AUTHENTICATED
-                    print 'successfully login user: ', self.users_loggedin[client_address].user_name
-                    self.send_encrypted_data_to_client(connection, self.users_loggedin[client_address], response_msg,
+                    self.users_loggedin[client_addr].state = UserState.AUTHENTICATED
+                    print 'successfully login user: ', self.users_loggedin[client_addr].user_name
+                    self.send_encrypted_data_to_client(connection, self.users_loggedin[client_addr], response_msg,
                                                        False)
                 # ----------------- handle messages sent from authenticated users --------------------#
-                elif client_address in self.users_loggedin and self.users_loggedin[
-                    client_address].state == UserState.AUTHENTICATED:
+                elif client_addr in self.users_loggedin and self.users_loggedin[
+                    client_addr].state == UserState.AUTHENTICATED:
                     iv, encrypted_msg = data.split(SEPARATOR)
-                    user_info = self.users_loggedin[client_address]
+                    user_info = self.users_loggedin[client_addr]
                     decrypted_msg = Crypto.symmetric_decrypt(user_info.secret_key,
                                                              Crypto.asymmetric_decrypt(self.private_key, iv),
                                                              encrypted_msg)
                     # handle list message
                     if msg_type == MessageType.LIST_USERS:
-                        print 'receive list request message from ', client_address
+                        print 'receive list request message from ', client_addr
                         self.client_handler_for_list(user_info, connection, decrypted_msg)
                     # handle get user info message
                     elif msg_type == MessageType.GET_USER_INFO:
-                        print 'receive get user info message from ', client_address
+                        print 'receive get user info message from ', client_addr
                         self.client_handler_for_loggedUsersInfo(user_info, connection, decrypted_msg)
                     # handle logout message
                     elif msg_type == MessageType.LOGOUT:
-                        print 'receive logout message from ', client_address
-                        self.logout_handler(user_info, client_address, connection, decrypted_msg)
+                        print 'receive logout message from ', client_addr
+                        self.logout_handler(user_info, client_addr, connection, decrypted_msg)
                     else:
                         print 'illegal message type: ', msg_type
         except:
             print 'Error happens when handling client messages, break the connection!'
-            self.client_error_handler(connection, client_address)
+            self.client_error_handler(connection, client_addr)
         finally:
-            print 'Close the connection with ' + str(client_address)
+            print 'Close the connection with ' + str(client_addr)
             connection.close()
 
     # --------------------------- login related messages ------------------------- #
@@ -296,30 +296,27 @@ class Server:
         challenge_hash = Crypto.generate_hash(str(challenge))
         return challenge, challenge_hash, trunc_challenge
 
-
     def run(self):
         try:
             self.sock.bind((self.host, self.port))
             self.sock.listen(1)
-            print 'Server Started on ' + self.host + ':' + str(self.port) + ' ...'
+            print 'Server started on ' + self.host + ':' + str(self.port) + ' ...'
             threading.Thread(target=self.exit_handler, args=()).start()
             while True:
-                connection, client_address = self.sock.accept()
-                threading.Thread(target=self.client_handler, args=(connection, client_address)).start()
+                connection, client_add = self.sock.accept()
+                threading.Thread(target=self.client_handler, args=(connection, client_add)).start()
         except socket.error:
             traceback.print_exc()
             print 'Server failed to start'
 
 
 if __name__ == '__main__':
-    # parse the input parameters
+    # Reading the server from config file and starting a socket using that port
     config = ConfigParser.RawConfigParser()
     config.read('configuration/server.cfg')
     port_num = config.getint('info', 'port')
     pri_key = config.get('info', 'private_key')
     user_creds = config.get('info', 'user_creds')
-    host_name = Crypto.get_local_ip()
-    # create the chat server
-    server = Server(host_name, port_num, pri_key, user_creds)
-    # start running the chat server
-    server.run()
+    host_name = Crypto.get_local_ip() # get local ip address by trying to connect to the DNS of google
+    server = Server(host_name, port_num,pri_key, user_creds) # Create a server object
+    server.run() # Start the socket
