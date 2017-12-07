@@ -9,7 +9,7 @@ import socket
 import threading
 import time
 import traceback
-from Message import MessageStatus, AuthStartRes, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
+from Message import MessageStatus, AuthMsg, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
 
 
 # MSS = 1460
@@ -169,7 +169,7 @@ class Server:
         n2 = Crypto.generate_nonce(32)
         current_user.temp_nonce = n2
         serialized_dh_pub_key = Crypto.serialize_pub_key(dh_pub_key)
-        response_to_client = pickle.dumps(AuthStartRes(serialized_dh_pub_key, n1, n2), pickle.HIGHEST_PROTOCOL)
+        response_to_client = pickle.dumps(AuthMsg('','','',serialized_dh_pub_key, '','',n1, n2), pickle.HIGHEST_PROTOCOL)
         encrypted_response_to_client = Crypto.asymmetric_encryption(current_user.rsa_pub_key, response_to_client)
         return True, encrypted_response_to_client
 

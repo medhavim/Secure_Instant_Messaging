@@ -21,7 +21,7 @@ class MessageStatus(object):
     LOGOUT = 'LOGOUT'
 
 
-class AuthStartMsg(object):
+class AuthMsg(object):
     def __init__(self,
                  user_name,
                  password,
@@ -29,7 +29,9 @@ class AuthStartMsg(object):
                  dh_pub_key,
                  ip,
                  port,
-                 n1):
+                 n1,
+                 n2
+                 ):
         self.user_name = user_name
         self.password = password
         self.rsa_pub_key = rsa_pub_key
@@ -37,17 +39,7 @@ class AuthStartMsg(object):
         self.ip = ip
         self.port = port
         self.n1 = n1
-
-
-class AuthStartRes(object):
-    def __init__(self,
-                 dh_pub_key,
-                 n1,
-                 n2):
-        self.dh_pub_key = dh_pub_key
-        self.n1 = n1
         self.n2 = n2
-
 
 class UserListRes(object):
     def __init__(self,

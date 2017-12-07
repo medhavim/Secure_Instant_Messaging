@@ -10,7 +10,7 @@ import socket
 import sys
 import threading
 import time
-from Message import LINE_SEPARATOR, MessageStatus, AuthStartMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ConnStartMsg, ConnBackMsg, \
+from Message import LINE_SEPARATOR, MessageStatus, AuthMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ConnStartMsg, ConnBackMsg, \
     ConnEndMsg, TextMsg, DisconnMsg
 
 MAX_LOGIN_ATTEMPTS = 3
@@ -130,14 +130,15 @@ class Client(cmd.Cmd):
 
     def start_authentication(self, solved_challenge, user_name, password):
         n1 = Crypto.generate_nonce()
-        send_msg = AuthStartMsg(
+        send_msg = AuthMsg(
             user_name,
             password,
             Crypto.serialize_pub_key(self.rsa_pub_key),
             Crypto.serialize_pub_key(self.dh_pub_key),
             self.client_ip,
             self.client_port,
-            n1
+            n1,
+            ''
         )
         msg_str = pickle.dumps(send_msg, pickle.HIGHEST_PROTOCOL)
         encrypted_msg = Crypto.asymmetric_encryption(self.server_pub_key, msg_str)
