@@ -44,18 +44,18 @@ import Message
 
 
 # ---------------------- String related utils -----------------------#
-def substring_before(s, splitter):
-    split_index = s.find(splitter)
-    if split_index != -1:
-        return s[0:split_index].strip()
-    return ''
+#def substring_before(s, splitter):
+#    split_index = s.find(splitter)
+#    if split_index != -1:
+#        return s[0:split_index].strip()
+#    return ''
 
 
-def substring_after(s, splitter):
-    split_index = s.find(splitter)
-    if split_index != -1:
-        return s[split_index:].strip()
-    return ''
+#def substring_after(s, splitter):
+#    split_index = s.find(splitter)
+#    if split_index != -1:
+#        return s[split_index:].strip()
+#    return ''
 
 
 # ---------------------- Nonce related utils -----------------------#

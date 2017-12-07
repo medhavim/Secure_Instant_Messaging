@@ -68,12 +68,12 @@ class Server:
                 data = msg['data']
                 # establishing authentication init message
                 if msg_type == MessageType.INIT and client_addr not in self.users_loggedin:
-                    print 'authentication init message received from ', client_addr
+                    print 'Authentication init message received from ', client_addr
                     self.client_handler_for_init(connection, client_addr)
                 # establishing authentication start message
                 elif msg_type == MessageType.AUTH_START and client_addr in self.users_loggedin \
                         and self.users_loggedin[client_addr].state == UserState.INIT:
-                    print 'authentication start message received from ', client_addr
+                    print 'Authentication start message received from ', client_addr
                     isUserVerified, encrypted_response_to_client = self.client_handler_for_auth_start(client_addr, data)
                     msg = dict()
                     msg['data'] = encrypted_response_to_client
@@ -87,7 +87,7 @@ class Server:
                 # establishing authentication end message
                 elif msg_type == MessageType.AUTH_END and client_addr in self.users_loggedin \
                         and self.users_loggedin[client_addr].state == UserState.VERIFIED:
-                    print 'authentication end message received from ', client_addr
+                    print 'Authentication end message received from ', client_addr
                     isAuthEstablished, encrypted_response_to_client = self.client_handler_for_auth_end(client_addr, data)
                     if not isAuthEstablished:
                         msg = dict()
@@ -97,7 +97,7 @@ class Server:
                         self.client_error_handler(connection, client_addr)
                         break
                     self.users_loggedin[client_addr].state = UserState.AUTHENTICATED
-                    print 'successfully login user: ', self.users_loggedin[client_addr].user_name
+                    print 'Successfully logged in user: ', self.users_loggedin[client_addr].user_name
                     self.send_encrypted_data_to_client(connection, self.users_loggedin[client_addr],
                                                        encrypted_response_to_client, False)
                 # message exchange between authenticated users
@@ -110,18 +110,18 @@ class Server:
                                                              response_from_client)
                     # sending response for list message
                     if msg_type == MessageType.LIST_USERS:
-                        print 'received list request message from ', client_addr
+                        print 'Received LIST request message from ', client_addr
                         self.client_handler_for_list(user_dict, connection, decrypted_response_from_client)
                     # handle get user info message
                     elif msg_type == MessageType.GET_USER_INFO:
-                        print 'receive get user info message from ', client_addr
+                        print 'Received get user information message from ', client_addr
                         self.client_handler_for_loggedUsersInfo(user_dict, connection, decrypted_response_from_client)
                     # handle logout message
                     elif msg_type == MessageType.LOGOUT:
-                        print 'receive logout message from ', client_addr
+                        print 'Received logout message from ', client_addr
                         self.logout_handler(user_dict, client_addr, connection, decrypted_response_from_client)
                     else:
-                        print 'illegal message type: ', msg_type
+                        print 'Illegal message type: ', msg_type
         except:
             print 'Error happens when handling client messages, break the connection!'
             self.client_error_handler(connection, client_addr)
