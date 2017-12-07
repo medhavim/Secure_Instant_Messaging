@@ -1,6 +1,7 @@
 import base64
-import socket
+import Message
 import os
+import socket
 import time
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
 from cryptography.hazmat.primitives import serialization, hashes
@@ -9,9 +10,6 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.exceptions import InvalidSignature
-
-import Message
-
 
 def generate_rsa_key_pair(public_exponent=65537, key_size=1024):
     rsa_private_key = rsa.generate_private_key(

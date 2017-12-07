@@ -1,5 +1,3 @@
-import json
-
 LINE_SEPARATOR = '\n'
 SPACE_SEPARATOR = ' '
 MAX_BUFFER_SIZE = 65536

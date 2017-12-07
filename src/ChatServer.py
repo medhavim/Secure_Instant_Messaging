@@ -1,17 +1,14 @@
 import base64
+import ConfigParser
+import Crypto
+import csv
 import json
+import os
+import pickle
 import socket
 import threading
-import csv
-
-import pickle
-
-import Crypto
-import os
-import Utils
 import time
 import traceback
-import ConfigParser
 from Message import MessageType, AuthStartRes, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
 
 

@@ -1,14 +1,15 @@
-import ConfigParser, base64, pickle
-import socket
+import base64
 import cmd
-import threading
-import os
-import sys
+import ConfigParser
 import Crypto
-import Utils
-import time
 import getpass
 import json
+import os
+import pickle
+import socket
+import sys
+import threading
+import time
 from Message import LINE_SEPARATOR, MessageType, AuthStartMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ConnStartMsg, ConnBackMsg, \
     ConnEndMsg, TextMsg, DisconnMsg
 
