@@ -9,7 +9,7 @@ import socket
 import threading
 import time
 import traceback
-from Message import MessageType, AuthStartRes, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
+from Message import MessageStatus, AuthStartRes, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
 
 
 # MSS = 1460
@@ -64,31 +64,31 @@ class Server:
                 msg_type = msg['type']
                 data = msg['data']
                 # establishing authentication init message
-                if msg_type == MessageType.INIT and client_addr not in self.users_loggedin:
+                if msg_type == MessageStatus.INIT and client_addr not in self.users_loggedin:
                     print 'Authentication init message received from ', client_addr
                     self.client_handler_for_init(connection, client_addr)
                 # establishing authentication start message
-                elif msg_type == MessageType.AUTH_START and client_addr in self.users_loggedin \
+                elif msg_type == MessageStatus.START_AUTH and client_addr in self.users_loggedin \
                         and self.users_loggedin[client_addr].state == UserState.INIT:
                     print 'Authentication start message received from ', client_addr
                     isUserVerified, encrypted_response_to_client = self.client_handler_for_auth_start(client_addr, data)
                     msg = dict()
                     msg['data'] = encrypted_response_to_client
                     if not isUserVerified:
-                        msg['type'] = MessageType.RES_FOR_INVALID_REQ
+                        msg['type'] = MessageStatus.INVALID_RES
                         connection.sendall(json.dumps(msg))
                         self.client_error_handler(connection, client_addr)
                         break
-                    msg['type'] = MessageType.RES_FOR_VALID_REQ
+                    msg['type'] = MessageStatus.VALID_RES
                     connection.sendall(json.dumps(msg))
                 # establishing authentication end message
-                elif msg_type == MessageType.AUTH_END and client_addr in self.users_loggedin \
+                elif msg_type == MessageStatus.END_AUTH and client_addr in self.users_loggedin \
                         and self.users_loggedin[client_addr].state == UserState.VERIFIED:
                     print 'Authentication end message received from ', client_addr
                     isAuthEstablished, encrypted_response_to_client = self.client_handler_for_auth_end(client_addr, data)
                     if not isAuthEstablished:
                         msg = dict()
-                        msg['type'] = MessageType.RES_FOR_INVALID_REQ
+                        msg['type'] = MessageStatus.INVALID_RES
                         msg['data'] = encrypted_response_to_client
                         connection.sendall(json.dumps(msg))
                         self.client_error_handler(connection, client_addr)
@@ -106,15 +106,15 @@ class Server:
                                                              Crypto.asymmetric_decryption(self.private_key, iv),
                                                              response_from_client)
                     # sending response for list message
-                    if msg_type == MessageType.LIST_USERS:
+                    if msg_type == MessageStatus.LIST:
                         print 'Received LIST request message from ', client_addr
                         self.client_handler_for_list(user_dict, connection, decrypted_response_from_client)
                     # handle get user info message
-                    elif msg_type == MessageType.GET_USER_INFO:
+                    elif msg_type == MessageStatus.TICKET_TO_USER:
                         print 'Received get user information message from ', client_addr
                         self.client_handler_for_loggedUsersInfo(user_dict, connection, decrypted_response_from_client)
                     # handle logout message
-                    elif msg_type == MessageType.LOGOUT:
+                    elif msg_type == MessageStatus.LOGOUT:
                         print 'Received logout message from ', client_addr
                         self.logout_handler(user_dict, client_addr, connection, decrypted_response_from_client)
                     else:
@@ -225,7 +225,7 @@ class Server:
             self.send_encrypted_data_to_client(connection, request_user_info, user_info_msg)
         else:
             msg=dict()
-            msg['type'] = MessageType.RES_FOR_INVALID_REQ
+            msg['type'] = MessageStatus.INVALID_RES
             msg['data'] = 'The user <' + target_user_name + '> is offline!'
             connection.sendall(json.dumps(msg))
 
@@ -247,7 +247,7 @@ class Server:
             self.send_encrypted_data_to_client(connection, request_user_info, logout_res)
         else:
             msg = dict()
-            msg['type'] = MessageType.RES_FOR_INVALID_REQ
+            msg['type'] = MessageStatus.INVALID_RES
             msg['data'] = 'Trying to logout an offline user!'
             connection.sendall(json.dumps(msg))
 
@@ -260,7 +260,7 @@ class Server:
             msg = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
         encrypted_res_message = Crypto.symmetric_encryption(request_user_info.secret_key, iv, msg)
         send_res_msg = dict()
-        send_res_msg['type'] = MessageType.RES_FOR_VALID_REQ
+        send_res_msg['type'] = MessageStatus.VALID_RES
         send_res_msg['data'] = Crypto.asymmetric_encryption(request_user_info.rsa_pub_key, iv) + \
                                LINE_SEPARATOR + encrypted_res_message
         connection.sendall(json.dumps(send_res_msg))
@@ -282,7 +282,7 @@ class Server:
     def validate_timestamp_in_req(connection, timestamp):
         if not Crypto.validate_timestamp(timestamp):
             msg = dict()
-            msg['type'] = MessageType.RES_FOR_INVALID_REQ
+            msg['type'] = MessageStatus.INVALID_RES
             msg['data'] = 'Gap between timestamp is too large, invalid message!'
             connection.sendall(json.dumps(msg))
             return False

@@ -5,38 +5,20 @@ MAX_BUFFER_SIZE = 65536
 MAX_TIMESTAMP_GAP = 10
 
 
-class MessageType(object):
+class MessageStatus(object):
     INIT = 'INIT'
-    AUTH_START = 'AUTH_START'
-    AUTH_END = 'AUTH_END'
-
-    LIST_USERS = 'LIST_USERS'
-    GET_USER_INFO = 'GET_USER_INFO'
-
-    CONN_USER_START = 'CONN_USER_START'
-    CONN_USER_RES = 'CONN_USER_RES'
-    CONN_USER_END = 'CONN_USER_END'
-    DIS_CONN = 'DIS_CONN'
-
-    TEXT_MSG = 'PLAIN_MSG'
+    START_AUTH = 'START_AUTH'
+    END_AUTH = 'END_AUTH'
+    INVALID_RES = 'INVALID_RES'
+    VALID_RES = 'VALID_RES'
+    LIST = 'LIST'
+    TICKET_TO_USER = 'TICKET_TO_USER'
+    START_CONN = 'START_CONN'
+    END_CONN = 'END_CONN'
+    USER_RES = 'USER_RES'
+    DISCONNECT = 'DISCONNECT'
+    PLAIN_MSG = 'PLAIN_MSG'
     LOGOUT = 'LOGOUT'
-
-    RES_FOR_INVALID_REQ = 'RES_FOR_INVALID_REQ'
-    RES_FOR_VALID_REQ = 'RES_FOR_VALID_REQ'
-
-
-#def loads(msg):
-#    json_obj = json.loads(msg#)
-#    tpe = json_obj['type']
-#    data = json_obj['data']
-#    return tpe, data
-
-
-#def dumps(tpe, data=''):
-#    msg = dict()
-#    msg['type'] = tpe
-#    msg['data'] = data
-#    return json.dumps(msg)
 
 
 class AuthStartMsg(object):

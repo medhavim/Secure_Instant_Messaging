@@ -10,7 +10,7 @@ import socket
 import sys
 import threading
 import time
-from Message import LINE_SEPARATOR, MessageType, AuthStartMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ConnStartMsg, ConnBackMsg, \
+from Message import LINE_SEPARATOR, MessageStatus, AuthStartMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ConnStartMsg, ConnBackMsg, \
     ConnEndMsg, TextMsg, DisconnMsg
 
 MAX_LOGIN_ATTEMPTS = 3
@@ -109,7 +109,7 @@ class Client(cmd.Cmd):
 
     def login_request(self):
         msg = dict()
-        msg['type'] = MessageType.INIT
+        msg['type'] = MessageStatus.INIT
         msg['data'] = ''
         init_msg = json.dumps(msg)
         self.client_sock.sendall(init_msg)
@@ -143,7 +143,7 @@ class Client(cmd.Cmd):
         encrypted_msg = Crypto.asymmetric_encryption(self.server_pub_key, msg_str)
         full_msg = solved_challenge + LINE_SEPARATOR + encrypted_msg
         msg = dict()
-        msg['type'] = MessageType.AUTH_START
+        msg['type'] = MessageStatus.START_AUTH
         msg['data'] = full_msg
         auth_start_msg = json.dumps(msg)
         self.client_sock.sendall(auth_start_msg)
@@ -154,7 +154,7 @@ class Client(cmd.Cmd):
         msg = json.loads(server_auth_response)
         msg_type = msg['type']
         data = msg['data']
-        if msg_type == MessageType.RES_FOR_INVALID_REQ:
+        if msg_type == MessageStatus.INVALID_RES:
             #print data
             return False, None, None
         decrypted_auth_start_response = Crypto.asymmetric_decryption(self.rsa_pri_key, data)
@@ -169,7 +169,7 @@ class Client(cmd.Cmd):
         iv = base64.b64encode(os.urandom(16))
         encrypted_n2 = Crypto.symmetric_encryption(self.shared_dh_key, iv, n2)
         msg = dict()
-        msg['type'] = MessageType.AUTH_END
+        msg['type'] = MessageStatus.END_AUTH
         msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_n2
         auth_end_msg = json.dumps(msg)
         self.client_sock.sendall(auth_end_msg)
@@ -182,7 +182,7 @@ class Client(cmd.Cmd):
     # --------------------------- list online users ------------------------- #
     def do_list(self, arg):
         try:
-            self._send_sym_encrypted_msg_to_server(MessageType.LIST_USERS, 'list')
+            self._send_sym_encrypted_msg_to_server(MessageStatus.LIST, 'list')
             validate_result, list_response = self._recv_sym_encrypted_msg_from_server()
             if validate_result:
                 print MSG_PROMPT + 'Online users: ' + ', '.join(list_response.user_names.split(SPACE_SEPARATOR))
@@ -234,7 +234,7 @@ class Client(cmd.Cmd):
 
     # --------------------------- get user information from the server ------------------------- #
     def _get_user_info(self, user_name):
-        self._send_sym_encrypted_msg_to_server(MessageType.GET_USER_INFO, user_name)
+        self._send_sym_encrypted_msg_to_server(MessageStatus.TICKET_TO_USER, user_name)
         validate_result, user_info_obj = self._recv_sym_encrypted_msg_from_server()
         if validate_result:
             # print target_address
@@ -260,7 +260,7 @@ class Client(cmd.Cmd):
             target_user_info.n3,
             time.time()
         )
-        self._send_encrypted_msg_to_user(target_user_info, MessageType.CONN_USER_START, msg)
+        self._send_encrypted_msg_to_user(target_user_info, MessageStatus.START_CONN, msg)
 
     # --------------------------- send the final message to the target user ------------------------- #
     def _send_text_msg(self, msg, receiver_info):
@@ -273,7 +273,7 @@ class Client(cmd.Cmd):
             Crypto.sign(self.rsa_pri_key, msg),
             time.time()
         )
-        self._send_encrypted_msg_to_user(receiver_info, MessageType.TEXT_MSG, text_msg)
+        self._send_encrypted_msg_to_user(receiver_info, MessageStatus.PLAIN_MSG, text_msg)
 
     # --------------------------- start a server socket to receive messages from other users ------------------------- #
     def start_recv_sock(self):
@@ -299,15 +299,15 @@ class Client(cmd.Cmd):
             if not Crypto.validate_timestamp(msg_obj.timestamp):
                 print 'Timestamp of the message from another user is invalid, drop the message!'
                 continue
-            if msg_type == MessageType.CONN_USER_START:
+            if msg_type == MessageStatus.START_CONN:
                 self._handle_conn_start(msg_obj)
-            elif msg_type == MessageType.CONN_USER_RES:
+            elif msg_type == MessageStatus.END_CONN:
                 self._handle_conn_back(msg_obj)
-            elif msg_type == MessageType.CONN_USER_END:
+            elif msg_type == MessageStatus.USER_RES:
                 self._handle_conn_end(msg_obj)
-            elif msg_type == MessageType.DIS_CONN:
+            elif msg_type == MessageStatus.DISCONNECT:
                 self._handle_disconn_msg(msg_obj)
-            elif msg_type == MessageType.TEXT_MSG:
+            elif msg_type == MessageStatus.PLAIN_MSG:
                 self._handle_text_msg(msg_obj)
 
     def _handle_conn_start(self, conn_start_msg):
@@ -335,7 +335,7 @@ class Client(cmd.Cmd):
             src_user_info.n4,
             time.time()
         )
-        self._send_encrypted_msg_to_user(src_user_info, MessageType.CONN_USER_RES, conn_back_msg)
+        self._send_encrypted_msg_to_user(src_user_info, MessageStatus.END_CONN, conn_back_msg)
 
     def _handle_conn_back(self, conn_back_msg):
         user_info = self.online_list[conn_back_msg.user_name]
@@ -352,7 +352,7 @@ class Client(cmd.Cmd):
                 Crypto.symmetric_encryption(user_info.sec_key, iv, str(conn_back_msg.n4)),
                 time.time()
             )
-            self._send_encrypted_msg_to_user(user_info, MessageType.CONN_USER_END, conn_end_msg)
+            self._send_encrypted_msg_to_user(user_info, MessageStatus.USER_RES, conn_end_msg)
 
     def _handle_conn_end(self, conn_end_msg):
         user_info = self.online_list[conn_end_msg.user_name]
@@ -392,7 +392,7 @@ class Client(cmd.Cmd):
             os._exit(0)
 
     def _logout_from_server(self):
-        self._send_sym_encrypted_msg_to_server(MessageType.LOGOUT, '')
+        self._send_sym_encrypted_msg_to_server(MessageStatus.LOGOUT, '')
         result, msg = self._recv_sym_encrypted_msg_from_server()
         return result
 
@@ -401,7 +401,7 @@ class Client(cmd.Cmd):
             if user_info.connected:
                 print 'Disconnecting the user <' + user_name + '>'
                 disconn_msg = DisconnMsg(self.user_name, time.time())
-                self._send_encrypted_msg_to_user(user_info, MessageType.DIS_CONN, disconn_msg)
+                self._send_encrypted_msg_to_user(user_info, MessageStatus.DISCONNECT, disconn_msg)
 
     # ------------------------ try to re-login if server broken down or reset ----------------------- #
     def _re_login(self):
@@ -430,7 +430,7 @@ class Client(cmd.Cmd):
         msg = json.loads(encrypted_server_response)
         msg_type = msg['type']
         data = msg['data']
-        if msg_type == MessageType.RES_FOR_INVALID_REQ:
+        if msg_type == MessageStatus.INVALID_RES:
             #print data
             return False, data
         else:
