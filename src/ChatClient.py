@@ -16,7 +16,7 @@ from MessageDetails import LINE_SEPARATOR, MessageStatus, AuthMsg, MAX_BUFFER_SI
 MAX_LOGIN_ATTEMPTS = 3
 CMD_PROMPT = '>> '
 MSG_PROMPT = '<< '
-ERROR_PROMPT = 'ERROR: '
+ERROR_PROMPT = '[ERROR] '
 
 
 # ########################### Client UserInfo Class ######################### #
@@ -108,7 +108,8 @@ class Client(cmd.Cmd):
             os._exit(0)
         except Exception as e:
             print e
-            print ERROR_PROMPT + 'Unknown error happens when trying to login: ', sys.exc_info()[0], ', please retry!'
+            print ERROR_PROMPT + 'Unknown error encountered when trying to login: ', sys.exc_info()[0]
+            print  ERROR_PROMPT + 'Please retry!'
         finally:
             if not log_result:
                 self.client_sock.close()
@@ -235,7 +236,7 @@ class Client(cmd.Cmd):
         self.send_encrypted_data_to_client(target_info, MessageStatus.PLAIN_MSG, msg)
 
     # ############################## CLIENT - CLIENT COMMUNICATION ################################### #
-    # ########################### Start the recieving socket for each client ######################### #
+    # ########################### Start the receiving socket for each client ######################### #
     def run_receive_socket(self):
         try:
             print 'Start client socket on ' + self.client_ip + ':' + str(self.client_port)

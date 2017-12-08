@@ -12,6 +12,10 @@ import traceback
 from MessageDetails import MessageStatus, AuthMsg, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
 
 
+ERROR_PROMPT = '[ERROR] '
+DEBUG_PROMPT = '[DEBUG] '
+
+
 # ########################### UserState Class ######################## #
 class UserState(object):
     INIT = 0,
@@ -67,15 +71,15 @@ class Server:
         challenge = response_from_client.solved_challenge
         # check if the response given to the challenge is correct
         if challenge != self.users_loggedin[client_address].challenge:
-            return False, 'Response to the given challenge is incorrect!'
+            return False, ERROR_PROMPT + 'Response to the given challenge is incorrect!'
         user_name = response_from_client.user_name
         # the same user cannot login twice
         user_dict = self.find_user_by_name(user_name)
         if user_dict is not None and user_dict.state == UserState.AUTHENTICATED:
-            return False, 'User is already logged in, please logout and retry!'
+            return False, ERROR_PROMPT + 'User is already logged in, please logout and retry!'
         password = response_from_client.password
         if not self.check_password(user_name, password):
-            return False, 'The user name or password is wrong!'
+            return False, ERROR_PROMPT + 'The user name or password is wrong!'
         # set user information
         current_user = self.users_loggedin[client_address]
         current_user.user_name = response_from_client.user_name
@@ -114,7 +118,7 @@ class Server:
                                                   fcrypt.asymmetric_decryption(self.private_key, tag),
                                                   encrypted_n2)
         if received_n2 != str(user_dict.temp_nonce):
-            return False, 'The nonce encrypted with the session key is wrong!'
+            return False, ERROR_PROMPT + 'The nonce encrypted with the session key is wrong!'
         end_response_to_client = str(long(received_n2) + 1)
         return True, end_response_to_client
 
@@ -152,7 +156,7 @@ class Server:
         else:
             msg=dict()
             msg['type'] = MessageStatus.INVALID_RES
-            msg['data'] = 'The user <' + target_user_name + '> is offline!'
+            msg['data'] = ERROR_PROMPT + 'The user <' + target_user_name + '> is offline!'
             connection.sendall(json.dumps(msg))
 
     # ########################### Get user info by user name ######################## #
@@ -175,7 +179,7 @@ class Server:
         else:
             msg = dict()
             msg['type'] = MessageStatus.INVALID_RES
-            msg['data'] = 'Trying to logout an offline user!'
+            msg['data'] = ERROR_PROMPT + 'Trying to logout an offline user!'
             connection.sendall(json.dumps(msg))
 
     # ############ Common function using symmetric encryption to send back message to client ############## #
@@ -204,7 +208,7 @@ class Server:
         if not fcrypt.verify_timestamp(timestamp):
             msg = dict()
             msg['type'] = MessageStatus.INVALID_RES
-            msg['data'] = 'Gap between timestamp is too large, invalid message!'
+            msg['data'] = ERROR_PROMPT + 'Gap between timestamp is too large, invalid message!'
             connection.sendall(json.dumps(msg))
             return False
         return True
@@ -228,7 +232,7 @@ class Server:
                 threading.Thread(target=self.client_handler, args=(connection, client_add)).start()
         except socket.error:
             traceback.print_exc()
-            print 'Server failed to start'
+            print ERROR_PROMPT + 'Server failed to start'
 
     # ########################### Target function for the Server ######################## #
     def server_exit_handler(self):
@@ -251,12 +255,12 @@ class Server:
                 data = msg['data']
                 # establishing authentication init message
                 if msg_type == MessageStatus.INIT and client_addr not in self.users_loggedin:
-                    print 'Authentication init message received from ', client_addr
+                    print DEBUG_PROMPT + 'Authentication init message received from ', client_addr
                     self.client_handler_for_init(connection, client_addr)
                 # establishing authentication start message
                 elif msg_type == MessageStatus.START_AUTH and client_addr in self.users_loggedin \
                         and self.users_loggedin[client_addr].state == UserState.INIT:
-                    print 'Authentication start message received from ', client_addr
+                    print DEBUG_PROMPT + 'Authentication start message received from ', client_addr
                     isUserVerified, encrypted_response_to_client = self.client_handler_for_auth_start(client_addr, data)
                     msg = dict()
                     msg['data'] = encrypted_response_to_client
@@ -270,7 +274,7 @@ class Server:
                 # establishing authentication end message
                 elif msg_type == MessageStatus.END_AUTH and client_addr in self.users_loggedin \
                         and self.users_loggedin[client_addr].state == UserState.VERIFIED:
-                    print 'Authentication end message received from ', client_addr
+                    print DEBUG_PROMPT + 'Authentication end message received from ', client_addr
                     isAuthEstablished, encrypted_response_to_client = self.client_handler_for_auth_end(client_addr, data)
                     if not isAuthEstablished:
                         msg = dict()
@@ -280,7 +284,7 @@ class Server:
                         self.client_error_handler(connection, client_addr)
                         break
                     self.users_loggedin[client_addr].state = UserState.AUTHENTICATED
-                    print 'Successfully logged in user: ', self.users_loggedin[client_addr].user_name
+                    print DEBUG_PROMPT + 'Successfully logged in user: ', self.users_loggedin[client_addr].user_name
                     self.send_encrypted_data_to_client(connection, self.users_loggedin[client_addr],
                                                        encrypted_response_to_client, False)
                 # message exchange between authenticated users
@@ -294,29 +298,29 @@ class Server:
                                                                                  response_from_client)
                     # sending response for list message
                     if msg_type == MessageStatus.LIST:
-                        print 'Received LIST request message from ', client_addr
+                        print DEBUG_PROMPT + 'Received LIST request message from ', client_addr
                         self.client_handler_for_list(user_dict, connection, decrypted_response_from_client)
                     # handle get user info message
                     elif msg_type == MessageStatus.TICKET_TO_USER:
-                        print 'Received get user information message from ', client_addr
+                        print DEBUG_PROMPT + 'Received get user information message from ', client_addr
                         self.client_handler_for_logged_users_info(user_dict, connection, decrypted_response_from_client)
                     # handle logout message
                     elif msg_type == MessageStatus.LOGOUT:
-                        print 'Received logout message from ', client_addr
+                        print DEBUG_PROMPT + 'Received logout message from ', client_addr
                         self.logout_handler(user_dict, client_addr, connection, decrypted_response_from_client)
                     else:
-                        print 'Illegal message type: ', msg_type
+                        print ERROR_PROMPT + 'Illegal message type: ', msg_type
         except:
-            print 'Error happens when handling client messages, break the connection!'
+            print ERROR_PROMPT + 'Error Encountered when handling client messages, break the connection!'
             self.client_error_handler(connection, client_addr)
         finally:
-            print 'Close the connection with ' + str(client_addr)
+            print DEBUG_PROMPT + 'Close the connection with ' + str(client_addr)
             connection.close()
 
     # ############## override default function: will be invoked if inputting invalid command ############## #
     @staticmethod
     def default(self, line):
-        print 'Enter "exit" / "quit" to stop the server'
+        print ERROR_PROMPT + 'Enter "exit" / "quit" to stop the server'
 
 
 # ############## Main Function ##################### #
