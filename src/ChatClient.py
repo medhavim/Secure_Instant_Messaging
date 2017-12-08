@@ -1,7 +1,7 @@
 import base64
 import cmd
 import ConfigParser
-import Crypto
+import fcrypt
 import getpass
 import json
 import os
@@ -17,7 +17,7 @@ MAX_LOGIN_ATTEMPTS = 3
 CMD_PROMPT = '>> '
 MSG_PROMPT = '<< '
 
-
+# --------------------------- Client UserInfo Class ------------------------- #
 class UserInfo:
     def __init__(self):
         self.address = None
@@ -30,7 +30,7 @@ class UserInfo:
         self.n4 = None
         self.connected = False
 
-
+# --------------------------- Client Class ------------------------- #
 class Client(cmd.Cmd):
     def __init__(self, ip, port, public_key_file):
         self.send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -41,16 +41,16 @@ class Client(cmd.Cmd):
         # chat server ip, port and public key
         self.server_ip = ip
         self.server_port = port
-        self.server_pub_key = Crypto.load_public_key(public_key_file)
+        self.server_pub_key = fcrypt.load_public_key(public_key_file)
         # generate rsa key pair
-        self.rsa_pri_key, self.rsa_pub_key = Crypto.generate_rsa_key_pair()
+        self.rsa_pri_key, self.rsa_pub_key = fcrypt.generate_rsa_key_pair()
         # generate dh key pair
-        self.dh_pri_key, self.dh_pub_key = Crypto.generate_dh_key_pair()
+        self.dh_pri_key, self.dh_pub_key = fcrypt.generate_dh_key_pair()
         # shared dh key
         self.shared_dh_key = None
         # chat client ip and port, used to receive messages
-        self.client_ip = Crypto.get_local_ip()
-        self.client_port = Crypto.get_free_port()
+        self.client_ip = fcrypt.get_local_ip()
+        self.client_port = fcrypt.get_free_port()
         # online-users known to the chatclient
         self.online_list = dict()
         # start socket for receiving messages
@@ -134,20 +134,20 @@ class Client(cmd.Cmd):
 
     # --------------------------- Start the client - server authentication ------------------------- #
     def start_authentication(self, solved_challenge, user_name, password):
-        n1 = Crypto.generate_nonce()
+        n1 = fcrypt.generate_nonce()
         send_msg = AuthMsg(
             solved_challenge,
             user_name,
             password,
-            Crypto.serialize_pub_key(self.rsa_pub_key),
-            Crypto.serialize_pub_key(self.dh_pub_key),
+            fcrypt.serialize_pub_key(self.rsa_pub_key),
+            fcrypt.serialize_pub_key(self.dh_pub_key),
             self.client_ip,
             self.client_port,
             n1,
             ''
         )
         msg_str = pickle.dumps(send_msg, pickle.HIGHEST_PROTOCOL)
-        encrypted_msg = Crypto.asymmetric_encryption(self.server_pub_key, msg_str)
+        encrypted_msg = fcrypt.asymmetric_encryption(self.server_pub_key, msg_str)
         msg = dict()
         msg['type'] = MessageStatus.START_AUTH
         msg['data'] = encrypted_msg
@@ -162,22 +162,22 @@ class Client(cmd.Cmd):
         msg_type = msg['type']
         if msg_type == MessageStatus.INVALID_RES:
             return False, None, None
-        decrypted_server_auth_response = pickle.loads(Crypto.asymmetric_decryption(self.rsa_pri_key, msg['data']))
+        decrypted_server_auth_response = pickle.loads(fcrypt.asymmetric_decryption(self.rsa_pri_key, msg['data']))
         server_dh_key, n1, n2 = decrypted_server_auth_response.dh_pub_key, \
                                 decrypted_server_auth_response.n1, decrypted_server_auth_response.n2
         if str(expected_n1) != str(n1):
             return False, None, None
-        shared_dh_key = Crypto.generate_shared_dh_key(self.dh_pri_key, Crypto.deserialize_pub_key(server_dh_key))
+        shared_dh_key = fcrypt.generate_shared_dh_key(self.dh_pri_key, fcrypt.deserialize_pub_key(server_dh_key))
         return True, shared_dh_key, str(n2)
 
     # --------------------------- Finish client - server authentication ------------------------- #
     def end_authentication(self, n2):
         iv = base64.b64encode(os.urandom(16))
-        encrypted_n2, tag = Crypto.symmetric_encryption(self.shared_dh_key, iv, n2)
+        encrypted_n2, tag = fcrypt.symmetric_encryption(self.shared_dh_key, iv, n2)
         msg = dict()
         msg['type'] = MessageStatus.END_AUTH
-        msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR+\
-                      Crypto.asymmetric_encryption(self.server_pub_key, tag)+ LINE_SEPARATOR + encrypted_n2
+        msg['data'] = fcrypt.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR + \
+                      fcrypt.asymmetric_encryption(self.server_pub_key, tag) + LINE_SEPARATOR + encrypted_n2
         self.client_sock.sendall(json.dumps(msg))
         isResultValid, decrypted_nonce_res = self.receive_encrypted_data_from_server(False)
         if isResultValid and long(decrypted_nonce_res) == long(n2) + 1:
@@ -193,7 +193,7 @@ class Client(cmd.Cmd):
             user_dict = self.online_list[user_name]
             user_dict.address = (user_info.ip, user_info.port)
             user_dict.sec_key = user_info.sec_key
-            user_dict.public_key = Crypto.deserialize_pub_key(user_info.public_key)
+            user_dict.public_key = fcrypt.deserialize_pub_key(user_info.public_key)
             user_dict.ticket = user_info.ticket
             user_dict.ticket_signature = user_info.ticket_signature
             user_dict.info_known = True
@@ -201,12 +201,12 @@ class Client(cmd.Cmd):
     # --------------------------- establish connection with another user ------------------------- #
     def connect_to_client(self, target_client_info):
         # start authentication process
-        target_client_info.n3 = Crypto.generate_nonce()
+        target_client_info.n3 = fcrypt.generate_nonce()
         msg = ConnStartMsg(
             self.user_name,
             self.client_ip,
             self.client_port,
-            Crypto.serialize_pub_key(self.rsa_pub_key),
+            fcrypt.serialize_pub_key(self.rsa_pub_key),
             target_client_info.ticket,
             target_client_info.ticket_signature,
             target_client_info.n3,
@@ -220,10 +220,10 @@ class Client(cmd.Cmd):
         sec_key = target_info.sec_key
         msg = TextMsg(
             self.user_name,
-            Crypto.asymmetric_encryption(target_info.public_key, iv),
-            Crypto.asymmetric_encryption(target_info.public_key, Crypto.symmetric_encryption(sec_key, iv, msg)[1]),
-            Crypto.symmetric_encryption(sec_key, iv, msg)[0],
-            Crypto.sign(self.rsa_pri_key, msg),
+            fcrypt.asymmetric_encryption(target_info.public_key, iv),
+            fcrypt.asymmetric_encryption(target_info.public_key, fcrypt.symmetric_encryption(sec_key, iv, msg)[1]),
+            fcrypt.symmetric_encryption(sec_key, iv, msg)[0],
+            fcrypt.sign(self.rsa_pri_key, msg),
             time.time()
         )
         self.send_encrypted_data_to_client(target_info, MessageStatus.PLAIN_MSG, msg)
@@ -246,8 +246,8 @@ class Client(cmd.Cmd):
                 break
             msg = json.loads(msg)
             msg_type = msg['type']
-            msg_from_client = pickle.loads(Crypto.asymmetric_decryption(self.rsa_pri_key, msg['data']))
-            if not Crypto.validate_timestamp(msg_from_client.timestamp):
+            msg_from_client = pickle.loads(fcrypt.asymmetric_decryption(self.rsa_pri_key, msg['data']))
+            if not fcrypt.validate_timestamp(msg_from_client.timestamp):
                 print 'Timestamp of the message from another user is invalid'
                 continue
             if msg_type == MessageStatus.START_CONN:
@@ -265,26 +265,26 @@ class Client(cmd.Cmd):
     def start_connection(self, msg_received):
         ticket = msg_received.ticket
         ticket_signature = msg_received.ticket_signature
-        if not Crypto.verify_signature(self.server_pub_key, ticket, ticket_signature):
+        if not fcrypt.verify_signature(self.server_pub_key, ticket, ticket_signature):
             return
         user_name_in_ticket, session_key_in_ticket, timestamp_to_expire = ticket.split(SPACE_SEPARATOR)
         if user_name_in_ticket != msg_received.user_name or float(timestamp_to_expire) < time.time():
             return
         received_from_user = UserInfo()
         received_from_user.address = (msg_received.ip, msg_received.port)
-        received_from_user.public_key = Crypto.deserialize_pub_key(msg_received.public_key)
+        received_from_user.public_key = fcrypt.deserialize_pub_key(msg_received.public_key)
         received_from_user.sec_key = session_key_in_ticket
         received_from_user.info_known = True
         self.online_list[msg_received.user_name] = received_from_user
         # send connection back message to the initiator
         n3 = msg_received.n3
-        received_from_user.n4 = Crypto.generate_nonce()
+        received_from_user.n4 = fcrypt.generate_nonce()
         iv = base64.b64encode(os.urandom(16))
         response_msg = ConnMsg(
             self.user_name,
             iv,
-            Crypto.symmetric_encryption(received_from_user.sec_key, iv, str(n3))[1],
-            Crypto.symmetric_encryption(received_from_user.sec_key, iv, str(n3))[0],
+            fcrypt.symmetric_encryption(received_from_user.sec_key, iv, str(n3))[1],
+            fcrypt.symmetric_encryption(received_from_user.sec_key, iv, str(n3))[0],
             received_from_user.n4,
             '',
             time.time()
@@ -293,7 +293,7 @@ class Client(cmd.Cmd):
 
     def response_to_connection(self, msg_received):
         user_dict = self.online_list[msg_received.user_name]
-        decrypted_n3 = Crypto.symmetric_decryption(user_dict.sec_key,
+        decrypted_n3 = fcrypt.symmetric_decryption(user_dict.sec_key,
                                                    msg_received.iv,
                                                    msg_received.tag,
                                                    msg_received.encrypted_n3)
@@ -303,10 +303,10 @@ class Client(cmd.Cmd):
             response_to_client = ConnMsg(
                 self.user_name,
                 iv,
-                Crypto.symmetric_encryption(user_dict.sec_key, iv, str(msg_received.n4))[1],
+                fcrypt.symmetric_encryption(user_dict.sec_key, iv, str(msg_received.n4))[1],
                 '',
                 '',
-                Crypto.symmetric_encryption(user_dict.sec_key, iv, str(msg_received.n4))[0],
+                fcrypt.symmetric_encryption(user_dict.sec_key, iv, str(msg_received.n4))[0],
                 time.time()
             )
             self.send_encrypted_data_to_client(user_dict, MessageStatus.USER_RES, response_to_client)
@@ -314,8 +314,8 @@ class Client(cmd.Cmd):
     # --------------------------- Finish Client - Client connection ------------------------- #
     def end_connection(self, conn_end_msg):
         user_info = self.online_list[conn_end_msg.user_name]
-        decrypted_n4 = Crypto.symmetric_decryption(user_info.sec_key, conn_end_msg.iv, conn_end_msg.tag,
-                                                      conn_end_msg.encrypted_n4)
+        decrypted_n4 = fcrypt.symmetric_decryption(user_info.sec_key, conn_end_msg.iv, conn_end_msg.tag,
+                                                   conn_end_msg.encrypted_n4)
         if str(user_info.n4) == str(decrypted_n4):
             user_info.connected = True
 
@@ -324,10 +324,10 @@ class Client(cmd.Cmd):
         user_name = msg.user_name
         if user_name in self.online_list and self.online_list[user_name].connected:
             user_dict = self.online_list[user_name]
-            iv = Crypto.asymmetric_decryption(self.rsa_pri_key, msg.iv)
-            tag = Crypto.asymmetric_decryption(self.rsa_pri_key, msg.tag)
-            decrypted_msg = Crypto.symmetric_decryption(user_dict.sec_key, iv, tag, msg.encrypted_msg)
-            if Crypto.verify_signature(user_dict.public_key, decrypted_msg, msg.msg_signature):
+            iv = fcrypt.asymmetric_decryption(self.rsa_pri_key, msg.iv)
+            tag = fcrypt.asymmetric_decryption(self.rsa_pri_key, msg.tag)
+            decrypted_msg = fcrypt.symmetric_decryption(user_dict.sec_key, iv, tag, msg.encrypted_msg)
+            if fcrypt.verify_signature(user_dict.public_key, decrypted_msg, msg.msg_signature):
                 print '\n' + MSG_PROMPT + user_name + " says: " + decrypted_msg
                 print self.user_name + CMD_PROMPT,
 
@@ -348,8 +348,8 @@ class Client(cmd.Cmd):
         print 'Something went wrong with server, please try to login again!'
         self.client_sock.close()
         self.user_name = None
-        self.rsa_pri_key, self.rsa_pub_key = Crypto.generate_rsa_key_pair()
-        self.dh_pri_key, self.dh_pub_key = Crypto.generate_dh_key_pair()
+        self.rsa_pri_key, self.rsa_pub_key = fcrypt.generate_rsa_key_pair()
+        self.dh_pri_key, self.dh_pub_key = fcrypt.generate_dh_key_pair()
         self.shared_dh_key = None
         self.run()
 
@@ -359,11 +359,11 @@ class Client(cmd.Cmd):
         send_time = time.time()
         iv = base64.b64encode(os.urandom(16))
         plain_msg = data + LINE_SEPARATOR + str(send_time)
-        encrypted_msg, tag = Crypto.symmetric_encryption(self.shared_dh_key, iv, plain_msg)
+        encrypted_msg, tag = fcrypt.symmetric_encryption(self.shared_dh_key, iv, plain_msg)
         msg = dict()
         msg['type'] = message_type
-        msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR+\
-                      Crypto.asymmetric_encryption(self.server_pub_key, tag)+ LINE_SEPARATOR + encrypted_msg
+        msg['data'] = fcrypt.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR + \
+                      fcrypt.asymmetric_encryption(self.server_pub_key, tag) + LINE_SEPARATOR + encrypted_msg
         self.client_sock.sendall(json.dumps(msg))
 
     # ----------------------- function to receive encrypted data from server --------------------- #
@@ -376,20 +376,20 @@ class Client(cmd.Cmd):
             return False, data
         else:
             iv, tag, encrypted_response_without_iv = data.split(LINE_SEPARATOR)
-            response_from_server = Crypto.symmetric_decryption(self.shared_dh_key,
-                                                          Crypto.asymmetric_decryption(self.rsa_pri_key, iv),
-                                                          Crypto.asymmetric_decryption(self.rsa_pri_key, tag),
-                                                          encrypted_response_without_iv)
+            response_from_server = fcrypt.symmetric_decryption(self.shared_dh_key,
+                                                               fcrypt.asymmetric_decryption(self.rsa_pri_key, iv),
+                                                               fcrypt.asymmetric_decryption(self.rsa_pri_key, tag),
+                                                               encrypted_response_without_iv)
             if validate_timestamp:
                 response_from_server = pickle.loads(response_from_server)
-                if not Crypto.validate_timestamp(response_from_server.timestamp):
+                if not fcrypt.validate_timestamp(response_from_server.timestamp):
                     return False, None
             return True, response_from_server
 
     # ----------------------- function to send encrypted data to another client --------------------- #
     def send_encrypted_data_to_client(self, target_client, msg_type, msg_obj):
-        response_to_server = Crypto.asymmetric_encryption(target_client.public_key,
-                                                     pickle.dumps(msg_obj, pickle.HIGHEST_PROTOCOL))
+        response_to_server = fcrypt.asymmetric_encryption(target_client.public_key,
+                                                          pickle.dumps(msg_obj, pickle.HIGHEST_PROTOCOL))
         msg = dict()
         msg['type'] = msg_type
         msg['data'] = response_to_server
@@ -403,7 +403,7 @@ class Client(cmd.Cmd):
         n = 0
         while len(str(guessed_challenge)) <= 40:
             guessed_challenge = str(trunc_challenge + (n << 112))
-            if Crypto.generate_hash(guessed_challenge) == challenge_hash:
+            if fcrypt.generate_hash(guessed_challenge) == challenge_hash:
                 return guessed_challenge
             n += 1
 
@@ -444,9 +444,11 @@ class Client(cmd.Cmd):
                 receiver_name = ''
                 msg = ''
             if receiver_name == self.user_name:
-                print 'Cannot send message to yourself!'
+                print 'You cannot send message to yourself.'
+                print 'Please choose another user to send a message.'
             elif receiver_name not in self.online_list:
-                print 'User not in client list! Try using list command to update the client list.'
+                print 'User not in client list.'
+                print 'Try using "list" command to update the online client list.'
             else:
                 destination_info = self.online_list[receiver_name]
                 # if we don't know the receiver's user information
@@ -500,7 +502,7 @@ class Client(cmd.Cmd):
 if __name__ == '__main__':
     config = ConfigParser.RawConfigParser()
     config.read('configuration/client.cfg')
-    server_ip = Crypto.get_local_ip()
+    server_ip = fcrypt.get_local_ip()
     server_port = config.getint('server_info', 'port')
     server_public_key = config.get('server_info', 'public_key')
 

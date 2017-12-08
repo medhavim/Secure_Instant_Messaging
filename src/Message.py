@@ -4,23 +4,7 @@ MAX_BUFFER_SIZE = 65536
 
 MAX_TIMESTAMP_GAP = 10
 
-
-class MessageStatus(object):
-    INIT = 'INIT'
-    START_AUTH = 'START_AUTH'
-    END_AUTH = 'END_AUTH'
-    INVALID_RES = 'INVALID_RES'
-    VALID_RES = 'VALID_RES'
-    LIST = 'LIST'
-    TICKET_TO_USER = 'TICKET_TO_USER'
-    START_CONN = 'START_CONN'
-    END_CONN = 'END_CONN'
-    USER_RES = 'USER_RES'
-    DISCONNECT = 'DISCONNECT'
-    PLAIN_MSG = 'PLAIN_MSG'
-    LOGOUT = 'LOGOUT'
-
-
+# --------------------------- Authentication Message Class ------------------------- #
 class AuthMsg(object):
     def __init__(self, solved_challenge, user_name,  password, rsa_pub_key, dh_pub_key, ip, port, n1, n2 ):
         self.solved_challenge = solved_challenge
@@ -93,3 +77,18 @@ class LogoutRes(object):
     def __init__(self, result, timestamp=None):
         self.result = result
         self.timestamp = timestamp
+
+class MessageStatus(object):
+    INIT = 'INIT'
+    START_AUTH = 'START_AUTH'
+    END_AUTH = 'END_AUTH'
+    INVALID_RES = 'INVALID_RES'
+    VALID_RES = 'VALID_RES'
+    LIST = 'LIST'
+    TICKET_TO_USER = 'TICKET_TO_USER'
+    START_CONN = 'START_CONN'
+    END_CONN = 'END_CONN'
+    USER_RES = 'USER_RES'
+    DISCONNECT = 'DISCONNECT'
+    PLAIN_MSG = 'PLAIN_MSG'
+    LOGOUT = 'LOGOUT'

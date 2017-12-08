@@ -1,6 +1,6 @@
 import base64
 import ConfigParser
-import Crypto
+import fcrypt
 import csv
 import json
 import os
@@ -12,13 +12,13 @@ import traceback
 from Message import MessageStatus, AuthMsg, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
 
 
-
+# --------------------------- UserState Class ------------------------- #
 class UserState(object):
     INIT = 0,
     VERIFIED = 1,
     AUTHENTICATED = 2
 
-
+# --------------------------- Server UserInfo Class ------------------------- #
 class UserInfo:
     def __init__(self, challenge):
         self.state = UserState.INIT
@@ -30,14 +30,14 @@ class UserInfo:
         self.port = ''
         self.temp_nonce = ''
 
-
+# --------------------------- Server Class ------------------------- #
 class Server:
     def __init__(self, host, port, private_key_file, user_credential_file):
         self.host = host
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.private_key = Crypto.load_private_key(private_key_file)
+        self.private_key = fcrypt.load_private_key(private_key_file)
         self.all_users = self.read_userInfo(user_credential_file)
         self.users_loggedin = dict()
 
@@ -61,7 +61,7 @@ class Server:
         self.users_loggedin[client_address] = user_dict
 
     def client_handler_for_auth_start(self, client_address, data):
-        response_from_client = pickle.loads(Crypto.asymmetric_decryption(self.private_key, data))
+        response_from_client = pickle.loads(fcrypt.asymmetric_decryption(self.private_key, data))
         challenge = response_from_client.solved_challenge
         # check if the response given to the challenge is correct
         if challenge != self.users_loggedin[client_address].challenge:
@@ -79,20 +79,20 @@ class Server:
         current_user.user_name = response_from_client.user_name
         current_user.ip = response_from_client.ip
         current_user.port = int(response_from_client.port)
-        current_user.rsa_pub_key = Crypto.deserialize_pub_key(response_from_client.rsa_pub_key)
+        current_user.rsa_pub_key = fcrypt.deserialize_pub_key(response_from_client.rsa_pub_key)
         current_user.state = UserState.VERIFIED
         # DH key exchange
-        dh_pri_key, dh_pub_key = Crypto.generate_dh_key_pair()
-        current_user.secret_key = Crypto.generate_shared_dh_key(dh_pri_key,
-                                                            Crypto.deserialize_pub_key(response_from_client.dh_pub_key))
+        dh_pri_key, dh_pub_key = fcrypt.generate_dh_key_pair()
+        current_user.secret_key = fcrypt.generate_shared_dh_key(dh_pri_key,
+                                                                fcrypt.deserialize_pub_key(response_from_client.dh_pub_key))
         # compose response message
         n1 = response_from_client.n1
-        n2 = Crypto.generate_nonce(32)
+        n2 = fcrypt.generate_nonce(32)
         current_user.temp_nonce = n2
-        serialized_dh_pub_key = Crypto.serialize_pub_key(dh_pub_key)
+        serialized_dh_pub_key = fcrypt.serialize_pub_key(dh_pub_key)
         response_to_client = pickle.dumps(AuthMsg('','','','',serialized_dh_pub_key,'','',n1, n2),
                                           pickle.HIGHEST_PROTOCOL)
-        encrypted_response_to_client = Crypto.asymmetric_encryption(current_user.rsa_pub_key, response_to_client)
+        encrypted_response_to_client = fcrypt.asymmetric_encryption(current_user.rsa_pub_key, response_to_client)
         return True, encrypted_response_to_client
 
     # --------------------------- Check if the password entered by the client is correct ------------------------- #
@@ -100,17 +100,17 @@ class Server:
         if user_name not in self.all_users:
             return False
         salt, password_hash = self.all_users[user_name]
-        if Crypto.generate_hash(password, salt) != password_hash:
+        if fcrypt.generate_hash(password, salt) != password_hash:
             return False
         return True
 
     def client_handler_for_auth_end(self, client_address, data):
         user_dict = self.users_loggedin[client_address]
         iv, tag, encrypted_n2 = data.split(LINE_SEPARATOR)
-        received_n2 = Crypto.symmetric_decryption(user_dict.secret_key,
-                                                     Crypto.asymmetric_decryption(self.private_key, iv),
-                                                     Crypto.asymmetric_decryption(self.private_key, tag),
-                                                     encrypted_n2)
+        received_n2 = fcrypt.symmetric_decryption(user_dict.secret_key,
+                                                  fcrypt.asymmetric_decryption(self.private_key, iv),
+                                                  fcrypt.asymmetric_decryption(self.private_key, tag),
+                                                  encrypted_n2)
         if received_n2 != str(user_dict.temp_nonce):
             return False, 'The nonce encrypted with the session key is wrong!'
         end_response_to_client = str(long(received_n2) + 1)
@@ -136,7 +136,7 @@ class Server:
             ticket = request_user_info.user_name + SPACE_SEPARATOR + \
                      key_between_client + SPACE_SEPARATOR + \
                      str(timestamp_to_expire)
-            ticket_signature = Crypto.sign(self.private_key, ticket)
+            ticket_signature = fcrypt.sign(self.private_key, ticket)
             target_pubkey = target_user_info.rsa_pub_key
             user_info_msg = UserInfoRes(
                 target_user_info.ip,
@@ -144,7 +144,7 @@ class Server:
                 key_between_client,
                 ticket,
                 ticket_signature,
-                Crypto.serialize_pub_key(target_pubkey)
+                fcrypt.serialize_pub_key(target_pubkey)
             )
             self.send_encrypted_data_to_client(connection, request_user_info, user_info_msg)
         else:
@@ -183,11 +183,11 @@ class Server:
         if include_timestamp:
             msg.timestamp = time.time()
             msg = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
-        encrypted_res_message, tag = Crypto.symmetric_encryption(request_user_info.secret_key, iv, msg)
+        encrypted_res_message, tag = fcrypt.symmetric_encryption(request_user_info.secret_key, iv, msg)
         send_res_msg = dict()
         send_res_msg['type'] = MessageStatus.VALID_RES
-        send_res_msg['data'] = Crypto.asymmetric_encryption(request_user_info.rsa_pub_key, iv) + LINE_SEPARATOR + \
-                               Crypto.asymmetric_encryption(request_user_info.rsa_pub_key, tag) + \
+        send_res_msg['data'] = fcrypt.asymmetric_encryption(request_user_info.rsa_pub_key, iv) + LINE_SEPARATOR + \
+                               fcrypt.asymmetric_encryption(request_user_info.rsa_pub_key, tag) + \
                                LINE_SEPARATOR + encrypted_res_message
         connection.sendall(json.dumps(send_res_msg))
 
@@ -199,7 +199,7 @@ class Server:
     # --------------------------- Static method to validate the timestamp ------------------------- #
     @staticmethod
     def validate_timestamp_in_req(connection, timestamp):
-        if not Crypto.validate_timestamp(timestamp):
+        if not fcrypt.validate_timestamp(timestamp):
             msg = dict()
             msg['type'] = MessageStatus.INVALID_RES
             msg['data'] = 'Gap between timestamp is too large, invalid message!'
@@ -209,9 +209,9 @@ class Server:
 
     # --------------------------- Create a challenge for client ------------------------- #
     def generate_challenge(self):
-        challenge = Crypto.generate_nonce()
+        challenge = fcrypt.generate_nonce()
         trunc_challenge = challenge & 0x0000ffffffffffffffffffffffffffff
-        challenge_hash = Crypto.generate_hash(str(challenge))
+        challenge_hash = fcrypt.generate_hash(str(challenge))
         return challenge, challenge_hash, trunc_challenge
 
     # --------------------------- Start the Server ------------------------- #
@@ -286,10 +286,10 @@ class Server:
                                 self.users_loggedin[client_addr].state == UserState.AUTHENTICATED:
                     iv, tag, response_from_client = data.split(LINE_SEPARATOR)
                     user_dict = self.users_loggedin[client_addr]
-                    decrypted_response_from_client = Crypto.symmetric_decryption(user_dict.secret_key,
-                                                             Crypto.asymmetric_decryption(self.private_key, iv),
-                                                            Crypto.asymmetric_decryption(self.private_key, tag),
-                                                             response_from_client)
+                    decrypted_response_from_client = fcrypt.symmetric_decryption(user_dict.secret_key,
+                                                                                 fcrypt.asymmetric_decryption(self.private_key, iv),
+                                                                                 fcrypt.asymmetric_decryption(self.private_key, tag),
+                                                                                 response_from_client)
                     # sending response for list message
                     if msg_type == MessageStatus.LIST:
                         print 'Received LIST request message from ', client_addr
@@ -326,6 +326,6 @@ if __name__ == '__main__':
     pri_key = config.get('info', 'private_key')
     user_creds = config.get('info', 'user_creds')
 
-    host_name = Crypto.get_local_ip() # get local ip address by trying to connect to the DNS of google
+    host_name = fcrypt.get_local_ip() # get local ip address by trying to connect to the DNS of google
     server = Server(host_name, port_num,pri_key, user_creds) # Create a server object
     server.run() # Start the server
