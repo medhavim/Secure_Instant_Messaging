@@ -156,7 +156,6 @@ class Client(cmd.Cmd):
         msg_type = msg['type']
         data = msg['data']
         if msg_type == MessageStatus.INVALID_RES:
-            #print data
             return False, None, None
         decrypted_auth_start_response = Crypto.asymmetric_decryption(self.rsa_pri_key, data)
         res_obj = pickle.loads(decrypted_auth_start_response)
@@ -168,10 +167,11 @@ class Client(cmd.Cmd):
 
     def end_authentication(self, n2):
         iv = base64.b64encode(os.urandom(16))
-        encrypted_n2 = Crypto.symmetric_encryption(self.shared_dh_key, iv, n2)
+        encrypted_n2, tag = Crypto.symmetric_encryption(self.shared_dh_key, iv, n2)
         msg = dict()
         msg['type'] = MessageStatus.END_AUTH
-        msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_n2
+        msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR+\
+                      Crypto.asymmetric_encryption(self.server_pub_key, tag)+ LINE_SEPARATOR + encrypted_n2
         auth_end_msg = json.dumps(msg)
         self.client_sock.sendall(auth_end_msg)
         validate_result, decrypted_nonce_response = self._recv_sym_encrypted_msg_from_server(False)
@@ -270,7 +270,8 @@ class Client(cmd.Cmd):
         text_msg = TextMsg(
             self.user_name,
             Crypto.asymmetric_encryption(receiver_info.pub_key, iv),
-            Crypto.symmetric_encryption(sec_key, iv, msg),
+            Crypto.asymmetric_encryption(receiver_info.pub_key, Crypto.symmetric_encryption(sec_key, iv, msg)[1]),
+            Crypto.symmetric_encryption(sec_key, iv, msg)[0],
             Crypto.sign(self.rsa_pri_key, msg),
             time.time()
         )
@@ -290,7 +291,6 @@ class Client(cmd.Cmd):
             msg, addr = self.recv_sock.recvfrom(MAX_BUFFER_SIZE)
             if not msg:
                 break
-            print 'Receive message from ', addr, ':\n', msg
             msg = json.loads(msg)
             msg_type = msg['type']
             data = msg['data']
@@ -332,7 +332,8 @@ class Client(cmd.Cmd):
         conn_back_msg = ConnBackMsg(
             self.user_name,
             iv,
-            Crypto.symmetric_encryption(src_user_info.sec_key, iv, str(n3)),
+            Crypto.symmetric_encryption(src_user_info.sec_key, iv, str(n3))[1],
+            Crypto.symmetric_encryption(src_user_info.sec_key, iv, str(n3))[0],
             src_user_info.n4,
             time.time()
         )
@@ -342,6 +343,7 @@ class Client(cmd.Cmd):
         user_info = self.online_list[conn_back_msg.user_name]
         decrypted_n3 = Crypto.symmetric_decryption(user_info.sec_key,
                                                       conn_back_msg.iv,
+                                                   conn_back_msg.tag,
                                                       conn_back_msg.encrypted_n3)
         if str(decrypted_n3) == str(user_info.n3):
             # print 'Successfully connected to the user <' + conn_back_msg.user_name + '>'
@@ -350,14 +352,15 @@ class Client(cmd.Cmd):
             conn_end_msg = ConnEndMsg(
                 self.user_name,
                 iv,
-                Crypto.symmetric_encryption(user_info.sec_key, iv, str(conn_back_msg.n4)),
+                Crypto.symmetric_encryption(user_info.sec_key, iv, str(conn_back_msg.n4))[1],
+                Crypto.symmetric_encryption(user_info.sec_key, iv, str(conn_back_msg.n4))[0],
                 time.time()
             )
             self._send_encrypted_msg_to_user(user_info, MessageStatus.USER_RES, conn_end_msg)
 
     def _handle_conn_end(self, conn_end_msg):
         user_info = self.online_list[conn_end_msg.user_name]
-        decrypted_n4 = Crypto.symmetric_decryption(user_info.sec_key, conn_end_msg.iv,
+        decrypted_n4 = Crypto.symmetric_decryption(user_info.sec_key, conn_end_msg.iv, conn_end_msg.tag,
                                                       conn_end_msg.encrypted_n4)
         if str(user_info.n4) == str(decrypted_n4):
             user_info.connected = True
@@ -367,8 +370,9 @@ class Client(cmd.Cmd):
         if user_name in self.online_list and self.online_list[user_name].connected:
             user_info = self.online_list[user_name]
             iv = Crypto.asymmetric_decryption(self.rsa_pri_key, text_msg.iv)
+            tag = Crypto.asymmetric_decryption(self.rsa_pri_key, text_msg.tag)
             encrypted_msg = text_msg.encrypted_msg
-            decrypted_msg = Crypto.symmetric_decryption(user_info.sec_key, iv, encrypted_msg)
+            decrypted_msg = Crypto.symmetric_decryption(user_info.sec_key, iv, tag, encrypted_msg)
             msg_signature = text_msg.msg_signature
             if Crypto.verify_signature(user_info.pub_key, decrypted_msg, msg_signature):
                 print '\n' + MSG_PROMPT + user_name + " has sent you: " + decrypted_msg
@@ -431,12 +435,12 @@ class Client(cmd.Cmd):
         send_time = time.time()
         iv = base64.b64encode(os.urandom(16))
         plain_msg = msg + LINE_SEPARATOR + str(send_time)
-        encrypted_msg = Crypto.symmetric_encryption(self.shared_dh_key, iv, plain_msg)
+        encrypted_msg, tag = Crypto.symmetric_encryption(self.shared_dh_key, iv, plain_msg)
         msg = dict()
         msg['type'] = message_type 
-        msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR + encrypted_msg
-        final_msg = json.dumps(msg)
-        self.client_sock.sendall(final_msg)
+        msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR+\
+                      Crypto.asymmetric_encryption(self.server_pub_key, tag)+ LINE_SEPARATOR + encrypted_msg
+        self.client_sock.sendall(json.dumps(msg))
 
     def _recv_sym_encrypted_msg_from_server(self, validate_timestamp=True):
         encrypted_server_response = self.client_sock.recv(MAX_BUFFER_SIZE)
@@ -447,9 +451,10 @@ class Client(cmd.Cmd):
             #print data
             return False, data
         else:
-            iv, encrypted_response_without_iv = data.split(LINE_SEPARATOR)
+            iv, tag, encrypted_response_without_iv = data.split(LINE_SEPARATOR)
             decrypted_response = Crypto.symmetric_decryption(self.shared_dh_key,
                                                           Crypto.asymmetric_decryption(self.rsa_pri_key, iv),
+                                                          Crypto.asymmetric_decryption(self.rsa_pri_key, tag),
                                                           encrypted_response_without_iv)
             if validate_timestamp:
                 decrypted_response = pickle.loads(decrypted_response)

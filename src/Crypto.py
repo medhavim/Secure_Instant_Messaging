@@ -35,17 +35,19 @@ def sign(private_key, plain_text):
     return base64.b64encode(signature)
 
 
-# use AES and CTR mode to symmetrically encrypt the plain text, and return the encryption result
+# use AES and GCM mode to symmetrically encrypt the plain text, and return the encryption result
 def symmetric_encryption(key, iv, ori_text):
-    cipher = Cipher(algorithms.AES(base64.b64decode(key)), modes.CTR(base64.b64decode(iv)), backend=default_backend())
+    cipher = Cipher(algorithms.AES(base64.b64decode(key)), modes.GCM(base64.b64decode(iv)), backend=default_backend())
     encryptor = cipher.encryptor()
     cipher_text = encryptor.update(ori_text) + encryptor.finalize()
-    return base64.b64encode(cipher_text)
+    tag = encryptor.tag
+    return base64.b64encode(cipher_text), base64.b64encode(tag)
 
 
 # use AES and CTR mode to symmetrically decrypt the encrypted text, and return the decryption result
-def symmetric_decryption(key, iv, encrypted_text):
-    cipher = Cipher(algorithms.AES(base64.b64decode(key)), modes.CTR(base64.b64decode(iv)), backend=default_backend())
+def symmetric_decryption(key, iv, tag, encrypted_text):
+    cipher = Cipher(algorithms.AES(base64.b64decode(key)),
+                    modes.GCM(base64.b64decode(iv), base64.b64decode(tag)), backend=default_backend())
     decryptor = cipher.decryptor()
     plain_text = decryptor.update(base64.b64decode(encrypted_text)) + decryptor.finalize()
     return plain_text

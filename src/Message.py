@@ -93,11 +93,13 @@ class ConnBackMsg(object):
     def __init__(self,
                  user_name,
                  iv,
+                 tag,
                  encrypted_n3,
                  n4,
                  timestamp):
         self.user_name = user_name
         self.iv = iv
+        self.tag = tag
         self.encrypted_n3 = encrypted_n3
         self.n4 = n4
         self.timestamp = timestamp
@@ -107,10 +109,12 @@ class ConnEndMsg(object):
     def __init__(self,
                  user_name,
                  iv,
+                 tag,
                  encrypted_n4,
                  timestamp):
         self.user_name = user_name
         self.iv = iv
+        self.tag = tag
         self.encrypted_n4 = encrypted_n4
         self.timestamp = timestamp
 
@@ -119,11 +123,13 @@ class TextMsg(object):
     def __init__(self,
                  user_name,
                  iv,
+                 tag,
                  encrypted_msg,
                  msg_signature,
                  timestamp):
         self.user_name = user_name
         self.iv = iv
+        self.tag = tag
         self.encrypted_msg = encrypted_msg
         self.msg_signature = msg_signature
         self.timestamp = timestamp

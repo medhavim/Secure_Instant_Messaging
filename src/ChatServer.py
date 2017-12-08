@@ -100,10 +100,11 @@ class Server:
                 # message exchange between authenticated users
                 elif client_addr in self.users_loggedin and \
                                 self.users_loggedin[client_addr].state == UserState.AUTHENTICATED:
-                    iv, response_from_client = data.split(LINE_SEPARATOR)
+                    iv, tag, response_from_client = data.split(LINE_SEPARATOR)
                     user_dict = self.users_loggedin[client_addr]
                     decrypted_response_from_client = Crypto.symmetric_decryption(user_dict.secret_key,
                                                              Crypto.asymmetric_decryption(self.private_key, iv),
+                                                            Crypto.asymmetric_decryption(self.private_key, tag),
                                                              response_from_client)
                     # sending response for list message
                     if msg_type == MessageStatus.LIST:
@@ -177,9 +178,10 @@ class Server:
 
     def client_handler_for_auth_end(self, client_address, data):
         user_dict = self.users_loggedin[client_address]
-        iv, encrypted_n2 = data.split(LINE_SEPARATOR)
+        iv, tag, encrypted_n2 = data.split(LINE_SEPARATOR)
         received_n2 = Crypto.symmetric_decryption(user_dict.secret_key,
                                                      Crypto.asymmetric_decryption(self.private_key, iv),
+                                                     Crypto.asymmetric_decryption(self.private_key, tag),
                                                      encrypted_n2)
         if received_n2 != str(user_dict.temp_nonce):
             return False, 'The nonce encrypted with the session key is wrong!'
@@ -252,10 +254,11 @@ class Server:
         if include_timestamp:
             msg.timestamp = time.time()
             msg = pickle.dumps(msg, pickle.HIGHEST_PROTOCOL)
-        encrypted_res_message = Crypto.symmetric_encryption(request_user_info.secret_key, iv, msg)
+        encrypted_res_message, tag = Crypto.symmetric_encryption(request_user_info.secret_key, iv, msg)
         send_res_msg = dict()
         send_res_msg['type'] = MessageStatus.VALID_RES
-        send_res_msg['data'] = Crypto.asymmetric_encryption(request_user_info.rsa_pub_key, iv) + \
+        send_res_msg['data'] = Crypto.asymmetric_encryption(request_user_info.rsa_pub_key, iv) + LINE_SEPARATOR + \
+                               Crypto.asymmetric_encryption(request_user_info.rsa_pub_key, tag) + \
                                LINE_SEPARATOR + encrypted_res_message
         connection.sendall(json.dumps(send_res_msg))
 
