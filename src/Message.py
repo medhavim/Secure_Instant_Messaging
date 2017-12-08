@@ -23,6 +23,7 @@ class MessageStatus(object):
 
 class AuthMsg(object):
     def __init__(self,
+                 solved_challenge,
                  user_name,
                  password,
                  rsa_pub_key,
@@ -32,6 +33,7 @@ class AuthMsg(object):
                  n1,
                  n2
                  ):
+        self.solved_challenge = solved_challenge
         self.user_name = user_name
         self.password = password
         self.rsa_pub_key = rsa_pub_key

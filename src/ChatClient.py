@@ -131,6 +131,7 @@ class Client(cmd.Cmd):
     def start_authentication(self, solved_challenge, user_name, password):
         n1 = Crypto.generate_nonce()
         send_msg = AuthMsg(
+            solved_challenge,
             user_name,
             password,
             Crypto.serialize_pub_key(self.rsa_pub_key),
@@ -142,10 +143,9 @@ class Client(cmd.Cmd):
         )
         msg_str = pickle.dumps(send_msg, pickle.HIGHEST_PROTOCOL)
         encrypted_msg = Crypto.asymmetric_encryption(self.server_pub_key, msg_str)
-        full_msg = solved_challenge + LINE_SEPARATOR + encrypted_msg
         msg = dict()
         msg['type'] = MessageStatus.START_AUTH
-        msg['data'] = full_msg
+        msg['data'] = encrypted_msg
         auth_start_msg = json.dumps(msg)
         self.client_sock.sendall(auth_start_msg)
         server_auth_response = self.client_sock.recv(MAX_BUFFER_SIZE)
@@ -479,11 +479,11 @@ class Client(cmd.Cmd):
 
     # -------------- override default function: will be invoked if inputting invalid command -------------- #
     def default(self, line):
-        print '<------ Commands supported ------>'
-        print '1. list: list all online user names'
-        print '2. send <username> <message>: send message to another online user'
-        print '3. logout: logout current user from the server'
-        print '<-------------------------------------------------------->'
+        print '<----------------------- Commands supported ----------------------->'
+        print '1. list: List all online users'
+        print '2. send <username> <message>: Send message to another online user'
+        print '3. logout / exit: Exit / Logout the current user from the server'
+
 
 
 if __name__ == '__main__':

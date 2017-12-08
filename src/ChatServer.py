@@ -134,14 +134,8 @@ class Server:
         self.users_loggedin[client_addr] = user_dict
 
     def client_handler_for_auth_start(self, client_address, data):
-        index = data.find(LINE_SEPARATOR)
-        if index != -1:
-            challenge = data[0:index].strip()
-            msg = data[index:].strip()
-        else:
-            challenge = ''
-            msg = ''
-        response_from_client = pickle.loads(Crypto.asymmetric_decryption(self.private_key, msg))
+        response_from_client = pickle.loads(Crypto.asymmetric_decryption(self.private_key, data))
+        challenge = response_from_client.solved_challenge
         # check if the response given to the challenge is correct
         if challenge != self.users_loggedin[client_address].challenge:
             return False, 'Response to the given challenge is incorrect!'
@@ -150,8 +144,8 @@ class Server:
         user_dict = self.find_user_by_name(user_name)
         if user_dict is not None and user_dict.state == UserState.AUTHENTICATED:
             return False, 'User is already logged in, please logout and retry!'
-        password = response_from_client.password
-        if not self.check_password(user_name, password):
+        passwordHash = response_from_client.password
+        if not self.check_password(user_name, passwordHash):
             return False, 'The user name or password is wrong!'
         # set user information
         current_user = self.users_loggedin[client_address]
@@ -169,7 +163,7 @@ class Server:
         n2 = Crypto.generate_nonce(32)
         current_user.temp_nonce = n2
         serialized_dh_pub_key = Crypto.serialize_pub_key(dh_pub_key)
-        response_to_client = pickle.dumps(AuthMsg('','','',serialized_dh_pub_key, '','',n1, n2), pickle.HIGHEST_PROTOCOL)
+        response_to_client = pickle.dumps(AuthMsg('','','','',serialized_dh_pub_key, '','',n1, n2), pickle.HIGHEST_PROTOCOL)
         encrypted_response_to_client = Crypto.asymmetric_encryption(current_user.rsa_pub_key, response_to_client)
         return True, encrypted_response_to_client
 
