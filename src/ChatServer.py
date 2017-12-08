@@ -333,7 +333,10 @@ if __name__ == '__main__':
     port_num = config.getint('info', 'port')
     pri_key = config.get('info', 'private_key')
     user_creds = config.get('info', 'user_creds')
-
-    host_name = fcrypt.get_local_ip() # get local ip address by trying to connect to the DNS of google
-    server = Server(host_name, port_num,pri_key, user_creds) # Create a server object
+    host_name = fcrypt.get_local_ip()  # get local ip address by trying to connect to the DNS of google
+    opentxt = open('configuration/server.cfg','w')
+    config.set('info', 'hostname', host_name)
+    config.write(opentxt)
+    opentxt.close()
+    server = Server(host_name, port_num, pri_key, user_creds) # Create a server object
     server.run() # Start the server

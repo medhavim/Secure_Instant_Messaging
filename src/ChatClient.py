@@ -525,10 +525,10 @@ class Client(cmd.Cmd):
 # ############## Main Function ###################### #
 if __name__ == '__main__':
     config = ConfigParser.RawConfigParser()
-    config.read('configuration/client.cfg')
-    server_ip = fcrypt.get_local_ip()
-    server_port = config.getint('server_info', 'port')
-    server_public_key = config.get('server_info', 'public_key')
+    config.read('configuration/server.cfg')
+    server_ip = config.get('info', 'hostname')
+    server_port = config.getint('info', 'port')
+    server_public_key = config.get('info', 'public_key')
 
     # initialize the client
     client = Client(server_ip, server_port, server_public_key)
