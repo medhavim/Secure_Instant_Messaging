@@ -44,7 +44,7 @@ def symmetric_encryption(key, iv, ori_text):
     return base64.b64encode(cipher_text), base64.b64encode(tag)
 
 
-# use AES and CTR mode to symmetrically decrypt the encrypted text, and return the decryption result
+# use AES and GCM mode to symmetrically decrypt the encrypted text, and return the decryption result
 def symmetric_decryption(key, iv, tag, encrypted_text):
     cipher = Cipher(algorithms.AES(base64.b64decode(key)),
                     modes.GCM(base64.b64decode(iv), base64.b64decode(tag)), backend=default_backend())
