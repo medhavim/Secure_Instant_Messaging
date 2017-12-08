@@ -10,14 +10,15 @@ import socket
 import sys
 import threading
 import time
-from Message import LINE_SEPARATOR, MessageStatus, AuthMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ConnMsg, ConnStartMsg, \
-    TextMsg, DisconnMsg
+from MessageDetails import LINE_SEPARATOR, MessageStatus, AuthMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, \
+    ConnMsg, ConnStartMsg, TextMsg, DisConnMsg
 
 MAX_LOGIN_ATTEMPTS = 3
 CMD_PROMPT = '>> '
 MSG_PROMPT = '<< '
 
-# --------------------------- Client UserInfo Class ------------------------- #
+
+# ########################### Client UserInfo Class ######################### #
 class UserInfo:
     def __init__(self):
         self.address = None
@@ -30,36 +31,39 @@ class UserInfo:
         self.n4 = None
         self.connected = False
 
-# --------------------------- Client Class ------------------------- #
+
+# ########################### Client Class ######################### #
 class Client(cmd.Cmd):
     def __init__(self, ip, port, public_key_file):
         self.send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client_sock = None
-        # user name for this chat client
+        # Client's user name
         self.user_name = None
-        # chat server ip, port and public key
+        # Client's server ip
         self.server_ip = ip
+        # Client's server port
         self.server_port = port
+        # Client's server public key
         self.server_pub_key = fcrypt.load_public_key(public_key_file)
-        # generate rsa key pair
+        # Generate client's rsa key pair
         self.rsa_pri_key, self.rsa_pub_key = fcrypt.generate_rsa_key_pair()
-        # generate dh key pair
+        # Generate client's DH key pair
         self.dh_pri_key, self.dh_pub_key = fcrypt.generate_dh_key_pair()
-        # shared dh key
+        # Client's shared DH key
         self.shared_dh_key = None
-        # chat client ip and port, used to receive messages
+        # Client's ip and port, used to receive messages
         self.client_ip = fcrypt.get_local_ip()
         self.client_port = fcrypt.get_free_port()
-        # online-users known to the chatclient
+        # online-users known to the Client
         self.online_list = dict()
         # start socket for receiving messages
         self.run_receive_socket()
         # start commandline interactive mode
         cmd.Cmd.__init__(self)
 
-    ############################### CLIENT - SERVER COMMUNICATION ######################################
-    # --------------------------- Start the client ------------------------- #
+    # ############################## CLIENT - SERVER COMMUNICATION ##################################### #
+    # ########################### Start the client ######################### #
     def run(self):
         login_attempts = 0
         loggedIn = False
@@ -76,10 +80,10 @@ class Client(cmd.Cmd):
             self.recv_sock.close()
             os._exit(0)
 
-    # --------------------------- login to the server ------------------------- #
+    # ########################### login to the server ######################### #
     def login(self):
-        user_name = raw_input('Enter your username: ')
-        password = getpass.getpass('Enter your password: ')
+        user_name = raw_input('Enter username: ')
+        password = getpass.getpass('Enter password: ')
         log_result = False
         self.user_name = user_name
         try:
@@ -109,17 +113,17 @@ class Client(cmd.Cmd):
                 self.client_sock.close()
             return log_result, user_name
 
-    # --------------------------- Request to login to the server ------------------------- #
+    # ########################### Request to login to the server ######################### #
     def login_request(self):
         msg = dict()
         msg['type'] = MessageStatus.INIT
         msg['data'] = ''
         self.client_sock.sendall(json.dumps(msg))
-        ## Wait for Server response
+        # Wait for Server response
         challenge = self.client_sock.recv(MAX_BUFFER_SIZE)
         return challenge
 
-    # --------------------------- Solve the challenge provide by the server ------------------------- #
+    # ########################### Solve the challenge provide by the server ######################### #
     def solve_server_challenge(self, challenge):
         index = challenge.find(LINE_SEPARATOR)
         if index != -1:
@@ -132,7 +136,7 @@ class Client(cmd.Cmd):
         solved_challenge = self.solve_challenge(trunc_challenge, challenge_hash)
         return solved_challenge
 
-    # --------------------------- Start the client - server authentication ------------------------- #
+    # ########################### Start the client - server authentication ######################### #
     def start_authentication(self, solved_challenge, user_name, password):
         n1 = fcrypt.generate_nonce()
         send_msg = AuthMsg(
@@ -153,10 +157,11 @@ class Client(cmd.Cmd):
         msg['data'] = encrypted_msg
         auth_start_msg = json.dumps(msg)
         self.client_sock.sendall(auth_start_msg)
+        # Wait for Server response
         server_auth_response = self.client_sock.recv(MAX_BUFFER_SIZE)
         return n1, server_auth_response
 
-    # --------------------------- Retrieve the server's public DH key ------------------------- #
+    # ########################### Retrieve the server's public DH key ######################### #
     def get_server_shared_key(self, expected_n1, server_auth_response):
         msg = json.loads(server_auth_response)
         msg_type = msg['type']
@@ -170,7 +175,7 @@ class Client(cmd.Cmd):
         shared_dh_key = fcrypt.generate_shared_dh_key(self.dh_pri_key, fcrypt.deserialize_pub_key(server_dh_key))
         return True, shared_dh_key, str(n2)
 
-    # --------------------------- Finish client - server authentication ------------------------- #
+    # ########################### Finish client - server authentication ######################### #
     def end_authentication(self, n2):
         iv = base64.b64encode(os.urandom(16))
         encrypted_n2, tag = fcrypt.symmetric_encryption(self.shared_dh_key, iv, n2)
@@ -185,7 +190,7 @@ class Client(cmd.Cmd):
         else:
             return False
 
-    # --------------------------- send message to server to get other client info ------------------------- #
+    # ########################### send message to server to get other client info ######################### #
     def get_user_details(self, user_name):
         self.send_encrypted_data_to_server(MessageStatus.TICKET_TO_USER, user_name)
         isResultValid, user_info = self.receive_encrypted_data_from_server()
@@ -198,7 +203,7 @@ class Client(cmd.Cmd):
             user_dict.ticket_signature = user_info.ticket_signature
             user_dict.info_known = True
 
-    # --------------------------- establish connection with another user ------------------------- #
+    # ########################### establish connection with another user ######################### #
     def connect_to_client(self, target_client_info):
         # start authentication process
         target_client_info.n3 = fcrypt.generate_nonce()
@@ -214,7 +219,7 @@ class Client(cmd.Cmd):
         )
         self.send_encrypted_data_to_client(target_client_info, MessageStatus.START_CONN, msg)
 
-    # --------------------------- send message to the another client user ------------------------- #
+    # ########################### send message to the another client user ######################### #
     def create_msg(self, msg, target_info):
         iv = base64.b64encode(os.urandom(16))
         sec_key = target_info.sec_key
@@ -228,8 +233,8 @@ class Client(cmd.Cmd):
         )
         self.send_encrypted_data_to_client(target_info, MessageStatus.PLAIN_MSG, msg)
 
-    ############################### CLIENT - CLIENT COMMUNICATION ######################################
-    # --------------------------- Start the recieving socket for each client ------------------------- #
+    # ############################## CLIENT - CLIENT COMMUNICATION ################################### #
+    # ########################### Start the recieving socket for each client ######################### #
     def run_receive_socket(self):
         try:
             print 'Start client socket on ' + self.client_ip + ':' + str(self.client_port)
@@ -238,16 +243,17 @@ class Client(cmd.Cmd):
         except socket.error:
             print 'Failed to start the socket for receiving messages'
 
-    # --------------------------- Target function for each client Thread ------------------------- #
+    # ########################### Target function for each client Thread ######################### #
     def start_listening(self):
         while True:
+            # Wait for Client response
             msg, address = self.recv_sock.recvfrom(MAX_BUFFER_SIZE)
             if not msg:
                 break
             msg = json.loads(msg)
             msg_type = msg['type']
             msg_from_client = pickle.loads(fcrypt.asymmetric_decryption(self.rsa_pri_key, msg['data']))
-            if not fcrypt.validate_timestamp(msg_from_client.timestamp):
+            if not fcrypt.verify_timestamp(msg_from_client.timestamp):
                 print 'Timestamp of the message from another user is invalid'
                 continue
             if msg_type == MessageStatus.START_CONN:
@@ -261,7 +267,7 @@ class Client(cmd.Cmd):
             elif msg_type == MessageStatus.PLAIN_MSG:
                 self.decrypt_msg_from_client(msg_from_client)
 
-    # --------------------------- Start the Client - Client connection ------------------------- #
+    # ########################### Start the Client - Client connection ######################### #
     def start_connection(self, msg_received):
         ticket = msg_received.ticket
         ticket_signature = msg_received.ticket_signature
@@ -311,7 +317,7 @@ class Client(cmd.Cmd):
             )
             self.send_encrypted_data_to_client(user_dict, MessageStatus.USER_RES, response_to_client)
 
-    # --------------------------- Finish Client - Client connection ------------------------- #
+    # ########################### Finish Client - Client connection ######################### #
     def end_connection(self, conn_end_msg):
         user_info = self.online_list[conn_end_msg.user_name]
         decrypted_n4 = fcrypt.symmetric_decryption(user_info.sec_key, conn_end_msg.iv, conn_end_msg.tag,
@@ -319,7 +325,7 @@ class Client(cmd.Cmd):
         if str(user_info.n4) == str(decrypted_n4):
             user_info.connected = True
 
-    # --------------------------- Decrypt message recieved from another client ------------------------- #
+    # ########################### Decrypt message recieved from another client ######################### #
     def decrypt_msg_from_client(self, msg):
         user_name = msg.user_name
         if user_name in self.online_list and self.online_list[user_name].connected:
@@ -331,21 +337,22 @@ class Client(cmd.Cmd):
                 print '\n' + MSG_PROMPT + user_name + " says: " + decrypted_msg
                 print self.user_name + CMD_PROMPT,
 
-    # --------------------------- Remove client from the online users list ------------------------- #
+    # ########################### Remove client from the online users list ######################### #
     def disconnect_client(self, disconnect_msg):
         user_name = disconnect_msg.user_name
         if user_name in self.online_list:
             del self.online_list[user_name]
 
-    # --------------------------- Logout from Server ------------------------- #
+    # ########################### Logout from Server ######################### #
     def server_logout(self):
         self.send_encrypted_data_to_server(MessageStatus.LOGOUT, '')
         isValid, msg = self.receive_encrypted_data_from_server()
         return isValid
 
-    # ------------------------ try to re-login if something went wrong in server ----------------------- #
+    # ######################## try to re-login if something went wrong in server ###################### #
     def retry_login(self):
-        print 'Something went wrong with server, please try to login again!'
+        print 'Something went wrong at the server.'
+        print 'Please try to login again.'
         self.client_sock.close()
         self.user_name = None
         self.rsa_pri_key, self.rsa_pub_key = fcrypt.generate_rsa_key_pair()
@@ -353,8 +360,8 @@ class Client(cmd.Cmd):
         self.shared_dh_key = None
         self.run()
 
-    ############################### HELPER FUNCTIONS ######################################
-    # ----------------------- function to send encrypted data to server --------------------- #
+    # ############################## HELPER FUNCTIONS ##################################### #
+    # ###################### function to send encrypted data to server #################### #
     def send_encrypted_data_to_server(self, message_type, data):
         send_time = time.time()
         iv = base64.b64encode(os.urandom(16))
@@ -366,8 +373,9 @@ class Client(cmd.Cmd):
                       fcrypt.asymmetric_encryption(self.server_pub_key, tag) + LINE_SEPARATOR + encrypted_msg
         self.client_sock.sendall(json.dumps(msg))
 
-    # ----------------------- function to receive encrypted data from server --------------------- #
+    # ###################### function to receive encrypted data from server #################### #
     def receive_encrypted_data_from_server(self, validate_timestamp=True):
+        # Wait for Client response
         encrypted_response = self.client_sock.recv(MAX_BUFFER_SIZE)
         msg = json.loads(encrypted_response)
         msg_type = msg['type']
@@ -382,11 +390,11 @@ class Client(cmd.Cmd):
                                                                encrypted_response_without_iv)
             if validate_timestamp:
                 response_from_server = pickle.loads(response_from_server)
-                if not fcrypt.validate_timestamp(response_from_server.timestamp):
+                if not fcrypt.verify_timestamp(response_from_server.timestamp):
                     return False, None
             return True, response_from_server
 
-    # ----------------------- function to send encrypted data to another client --------------------- #
+    # ###################### function to send encrypted data to another client #################### #
     def send_encrypted_data_to_client(self, target_client, msg_type, msg_obj):
         response_to_server = fcrypt.asymmetric_encryption(target_client.public_key,
                                                           pickle.dumps(msg_obj, pickle.HIGHEST_PROTOCOL))
@@ -395,7 +403,7 @@ class Client(cmd.Cmd):
         msg['data'] = response_to_server
         self.send_sock.sendto(json.dumps(msg), target_client.address)
 
-    # --------------------------- A static method to solve the server's challenge ------------------------- #
+    # ########################### A static method to solve the server's challenge ######################### #
     @staticmethod
     def solve_challenge(trunc_challenge, challenge_hash):
         trunc_challenge = long(trunc_challenge)
@@ -407,16 +415,16 @@ class Client(cmd.Cmd):
                 return guessed_challenge
             n += 1
 
-    # --------------------------- Disconnect user on logout ------------------------- #
+    # ########################### Disconnect user on logout ######################### #
     def disconnect_other_clients(self):
         for user_name, user_dict in self.online_list.iteritems():
             if user_dict.connected:
                 print 'Disconnecting with <' + user_name + '>'
-                disconnect_msg = DisconnMsg(self.user_name, time.time())
+                disconnect_msg = DisConnMsg(self.user_name, time.time())
                 self.send_encrypted_data_to_client(user_dict, MessageStatus.DISCONNECT, disconnect_msg)
 
-    ########################### COMMAND LINE INTERACTIONS ##############################
-    # --------------------------- show online clients ------------------------- #
+    # ########################## COMMAND LINE INTERACTIONS ############################# #
+    # ########################### show online clients ######################### #
     def do_list(self, arg):
         try:
             self.send_encrypted_data_to_server(MessageStatus.LIST, 'list')
@@ -431,9 +439,9 @@ class Client(cmd.Cmd):
         except (socket.error, ValueError) as e:
             self.retry_login()
         except:
-            print 'Unknown error while trying to get online user list from the server!'
+            print 'Unknown error encountered while trying to get online user list from the server!'
 
-    # --------------------------- send message to other clients ------------------------- #
+    # ########################### send message to other clients ######################### #
     def do_send(self, arg):
         try:
             index = arg.find(SPACE_SEPARATOR)
@@ -469,9 +477,9 @@ class Client(cmd.Cmd):
         except (socket.error, ValueError) as e:
             self.retry_login()
         except:
-            print 'Unknown error happened when trying to send message to another user!'
+            print 'Unknown error encountered while trying to send message to another user!'
 
-    # --------------------------- logout the user and exit the program ------------------------- #
+    # ########################### logout the user and exit the program ######################### #
     def do_logout(self, arg):
         try:
             if self.server_logout():
@@ -481,24 +489,29 @@ class Client(cmd.Cmd):
                 self.recv_sock.close()
                 os._exit(0)
         except:
-            print 'Error happened when trying to exit the client!'
+            print 'Error encountered while trying to exit the client!'
             os._exit(0)
 
-    # ----- Shortcuts ------ #
+    # ##### Shortcuts #####- #
     do_exit = do_logout
 
     do_quit = do_logout
 
 
-    # -------------- override default function: will be invoked if inputting invalid command ---------------- #
+    # ############## override default function: will be invoked if inputting invalid command ############### #
     def default(self, line):
-        print '<----------------------- Commands supported ----------------------->'
+        print '<-###################### Commands supported ######################->'
         print '1. list: List all online users'
         print '2. send <username> <message>: Send message to another online user'
         print '3. logout / exit / quit: Logout the current user from the server'
 
+    # ############## To disable re-running the last command when pressed 'Enter' ############## #
+    # ############## Do nothing on empty input line ############## #
+    def emptyline(self):
+        pass
 
-# -------------- Main Function ---------------------- #
+
+# ############## Main Function ###################### #
 if __name__ == '__main__':
     config = ConfigParser.RawConfigParser()
     config.read('configuration/client.cfg')

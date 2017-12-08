@@ -9,16 +9,17 @@ import socket
 import threading
 import time
 import traceback
-from Message import MessageStatus, AuthMsg, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
+from MessageDetails import MessageStatus, AuthMsg, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
 
 
-# --------------------------- UserState Class ------------------------- #
+# ########################### UserState Class ######################## #
 class UserState(object):
     INIT = 0,
     VERIFIED = 1,
     AUTHENTICATED = 2
 
-# --------------------------- Server UserInfo Class ------------------------- #
+
+# ########################### Server UserInfo Class ######################## #
 class UserInfo:
     def __init__(self, challenge):
         self.state = UserState.INIT
@@ -30,7 +31,8 @@ class UserInfo:
         self.port = ''
         self.temp_nonce = ''
 
-# --------------------------- Server Class ------------------------- #
+
+# ########################### Server Class ######################## #
 class Server:
     def __init__(self, host, port, private_key_file, user_credential_file):
         self.host = host
@@ -38,12 +40,12 @@ class Server:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.private_key = fcrypt.load_private_key(private_key_file)
-        self.all_users = self.read_userInfo(user_credential_file)
+        self.all_users = self.read_user_info(user_credential_file)
         self.users_loggedin = dict()
 
-    # --------------------------- Static method to load the user credentials ------------------------- #
+    # ########################### Static method to load the user credentials ######################## #
     @staticmethod
-    def read_userInfo(users_info_file, delimiter=';', charQuote='|'):
+    def read_user_info(users_info_file, delimiter=';', charQuote='|'):
         user_dict = dict()
         with open(users_info_file, 'rb') as csv_file:
             rows = csv.reader(csv_file, delimiter=delimiter, quotechar=charQuote)
@@ -53,7 +55,7 @@ class Server:
                 user_dict[username] = (salt, hash)
         return user_dict
 
-    # --------------------------- establishin login and authentication ------------------------- #
+    # ########################### Establishing login and authentication ######################## #
     def client_handler_for_init(self, connection, client_address):
         challenge, challenge_hash, truncated_challenge = self.generate_challenge()
         connection.sendall(str(truncated_challenge) + LINE_SEPARATOR + challenge_hash)
@@ -95,7 +97,7 @@ class Server:
         encrypted_response_to_client = fcrypt.asymmetric_encryption(current_user.rsa_pub_key, response_to_client)
         return True, encrypted_response_to_client
 
-    # --------------------------- Check if the password entered by the client is correct ------------------------- #
+    # ########################### Check if the password entered by the client is correct ######################## #
     def check_password(self, user_name, password):
         if user_name not in self.all_users:
             return False
@@ -116,7 +118,7 @@ class Server:
         end_response_to_client = str(long(received_n2) + 1)
         return True, end_response_to_client
 
-    # --------------------------- sending all logged in users to authenticated clients --------------------------- #
+    # ########################### sending all logged in users to authenticated clients ########################### #
     def client_handler_for_list(self, request_user_info, connection, received_list_message):
         list_flag, list_send_time = received_list_message.split(LINE_SEPARATOR)
         if self.validate_timestamp_in_req(connection, list_send_time):
@@ -124,8 +126,8 @@ class Server:
             user_list_res = UserListRes(current_user_names)
             self.send_encrypted_data_to_client(connection, request_user_info, user_list_res)
 
-    # --------------------------- send ticket to other clients for client-to-client authentication----------------- #
-    def client_handler_for_loggedUsersInfo(self, request_user_info, connection, user_info_msg):
+    # ########################### send ticket to other clients for client-to-client authentication################# #
+    def client_handler_for_logged_users_info(self, request_user_info, connection, user_info_msg):
         target_user_name, send_time = user_info_msg.split(LINE_SEPARATOR)
         if not self.validate_timestamp_in_req(connection, send_time):
             return
@@ -153,15 +155,15 @@ class Server:
             msg['data'] = 'The user <' + target_user_name + '> is offline!'
             connection.sendall(json.dumps(msg))
 
-    # --------------------------- Get user info by user name ------------------------- #
+    # ########################### Get user info by user name ######################## #
     def find_user_by_name(self, user_name):
-        for user_addr in self.users_loggedin:
-            login_user_info = self.users_loggedin[user_addr]
+        for user_address in self.users_loggedin:
+            login_user_info = self.users_loggedin[user_address]
             if login_user_info.user_name == user_name:
                 return login_user_info
         return None
 
-    # --------------------------- logout the user ------------------------- #
+    # ########################### logout the user ######################## #
     def logout_handler(self, request_user_info, client_address, connection, logout_msg):
         n, timestamp = logout_msg.split(LINE_SEPARATOR)
         if not self.validate_timestamp_in_req(connection, timestamp):
@@ -176,7 +178,7 @@ class Server:
             msg['data'] = 'Trying to logout an offline user!'
             connection.sendall(json.dumps(msg))
 
-    # ------------ Common function using symmetric encryption to send back message to client -------------- #
+    # ############ Common function using symmetric encryption to send back message to client ############## #
     @staticmethod
     def send_encrypted_data_to_client(connection, request_user_info, msg, include_timestamp=True):
         iv = base64.b64encode(os.urandom(16))
@@ -196,10 +198,10 @@ class Server:
             del self.users_loggedin[client_addr]
         connection.close()
 
-    # --------------------------- Static method to validate the timestamp ------------------------- #
+    # ########################### Static method to validate the timestamp ######################## #
     @staticmethod
     def validate_timestamp_in_req(connection, timestamp):
-        if not fcrypt.validate_timestamp(timestamp):
+        if not fcrypt.verify_timestamp(timestamp):
             msg = dict()
             msg['type'] = MessageStatus.INVALID_RES
             msg['data'] = 'Gap between timestamp is too large, invalid message!'
@@ -207,14 +209,14 @@ class Server:
             return False
         return True
 
-    # --------------------------- Create a challenge for client ------------------------- #
+    # ########################### Generate a challenge for client ######################## #
     def generate_challenge(self):
         challenge = fcrypt.generate_nonce()
         trunc_challenge = challenge & 0x0000ffffffffffffffffffffffffffff
         challenge_hash = fcrypt.generate_hash(str(challenge))
         return challenge, challenge_hash, trunc_challenge
 
-    # --------------------------- Start the Server ------------------------- #
+    # ########################### Start the Server ######################## #
     def run(self):
         try:
             self.sock.bind((self.host, self.port))
@@ -228,16 +230,16 @@ class Server:
             traceback.print_exc()
             print 'Server failed to start'
 
-    # --------------------------- Target function for the Server ------------------------- #
+    # ########################### Target function for the Server ######################## #
     def server_exit_handler(self):
         while True:
             command = raw_input()
             if command.strip() == 'exit' or command.strip() == 'quit':
-                print 'Shutting down the Server..'
+                print 'Shutting down the Server...'
                 self.sock.close()
                 os._exit(0)
 
-    # --------------------------- Target function for each Client on the Server ------------------------- #
+    # ########################### Target function for each Client on the Server ######################## #
     def client_handler(self, connection, client_addr):
         try:
             while True:
@@ -297,7 +299,7 @@ class Server:
                     # handle get user info message
                     elif msg_type == MessageStatus.TICKET_TO_USER:
                         print 'Received get user information message from ', client_addr
-                        self.client_handler_for_loggedUsersInfo(user_dict, connection, decrypted_response_from_client)
+                        self.client_handler_for_logged_users_info(user_dict, connection, decrypted_response_from_client)
                     # handle logout message
                     elif msg_type == MessageStatus.LOGOUT:
                         print 'Received logout message from ', client_addr
@@ -311,13 +313,13 @@ class Server:
             print 'Close the connection with ' + str(client_addr)
             connection.close()
 
-
-    # -------------- override default function: will be invoked if inputting invalid command -------------- #
+    # ############## override default function: will be invoked if inputting invalid command ############## #
+    @staticmethod
     def default(self, line):
         print 'Enter "exit" / "quit" to stop the server'
 
 
-# -------------- Main Function ---------------------- #
+# ############## Main Function ##################### #
 if __name__ == '__main__':
     # Reading the server from config file and starting a socket using that port
     config = ConfigParser.RawConfigParser()

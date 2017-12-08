@@ -1,16 +1,18 @@
 import base64
-import Message
+import MessageDetails
 import os
 import socket
 import time
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.kdf.x963kdf import X963KDF
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.x963kdf import X963KDF
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.exceptions import InvalidSignature
 
+
+# ########################### Generate RSA key pair for each new client login ################# #
 def generate_rsa_key_pair(public_exponent=65537, key_size=1024):
     rsa_private_key = rsa.generate_private_key(
         public_exponent=public_exponent,
@@ -21,6 +23,7 @@ def generate_rsa_key_pair(public_exponent=65537, key_size=1024):
     return rsa_private_key, rsa_public_key
 
 
+# ########################### Sign plain text ################# #
 # sign the plain text with private key, and return the signature
 def sign(private_key, plain_text):
     signer = private_key.signer(
@@ -35,6 +38,7 @@ def sign(private_key, plain_text):
     return base64.b64encode(signature)
 
 
+# ########################### Symmetric Encryption################# #
 # use AES and GCM mode to symmetrically encrypt the plain text, and return the encryption result
 def symmetric_encryption(key, iv, ori_text):
     cipher = Cipher(algorithms.AES(base64.b64decode(key)), modes.GCM(base64.b64decode(iv)), backend=default_backend())
@@ -44,6 +48,7 @@ def symmetric_encryption(key, iv, ori_text):
     return base64.b64encode(cipher_text), base64.b64encode(tag)
 
 
+# ########################### Symmetric Dencryption################# #
 # use AES and GCM mode to symmetrically decrypt the encrypted text, and return the decryption result
 def symmetric_decryption(key, iv, tag, encrypted_text):
     cipher = Cipher(algorithms.AES(base64.b64decode(key)),
@@ -53,7 +58,7 @@ def symmetric_decryption(key, iv, tag, encrypted_text):
     return plain_text
 
 
-# asymmetrically encrypt the given message with rsa
+# ########################### Asymmetric Encryption################# #
 def asymmetric_encryption(public_key, message):
     key_size = public_key.key_size
     seg_size = key_size / 8 - 42
@@ -73,7 +78,7 @@ def asymmetric_encryption(public_key, message):
     return cipher_text
 
 
-# asymmetrically decrypt the given message with rsa
+# ########################### Asymmetric Dencryption################# #
 def asymmetric_decryption(private_key, encrypted_msg):
     key_size = private_key.key_size
     encrypted_seg_size = (key_size / 8 - 42) * 2
@@ -97,6 +102,7 @@ def asymmetric_decryption(private_key, encrypted_msg):
         exit(-1)
 
 
+# ########################### Verify Signature ################# #
 # verify the sign with private key, and return the result
 def verify_signature(public_key, message, signature):
     try:
@@ -114,6 +120,16 @@ def verify_signature(public_key, message, signature):
         return False
 
 
+# ########################### Verify Timestamp ################# #
+def verify_timestamp(timestamp):
+    cur_time = time.time()
+    if cur_time - float(timestamp) > MessageDetails.MAX_TIMESTAMP_GAP:
+        print 'Gap between timestamp is too large, invalid message!'
+        return False
+    return True
+
+
+# ########################### Generate Hash ################# #
 def generate_hash(data, salt=''):
     digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
     if salt != '':
@@ -123,6 +139,7 @@ def generate_hash(data, salt=''):
     return hash_val
 
 
+# ########################### Generate DH key pair ################# #
 # The Elliptic Curve Diffie-Hellman Key Exchange algorithm
 def generate_dh_key_pair():
     dh_pri_key = ec.generate_private_key(
@@ -133,6 +150,7 @@ def generate_dh_key_pair():
     return dh_pri_key, dh_pub_key
 
 
+# ########################### Generate DH shared key ################# #
 def generate_shared_dh_key(x_pri_key, y_pub_key):
     shared_key = x_pri_key.exchange(ec.ECDH(), y_pub_key)
     xkdf = X963KDF(
@@ -144,6 +162,7 @@ def generate_shared_dh_key(x_pri_key, y_pub_key):
     return base64.b64encode(xkdf.derive(shared_key))
 
 
+# ########################### Serialize private key ################# #
 def serialize_pri_key(pri_key):
     serialized_pri_key = pri_key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -153,6 +172,7 @@ def serialize_pri_key(pri_key):
     return base64.b64encode(serialized_pri_key)
 
 
+# ########################### De-Serialize private key ################# #
 def deserialize_pri_key(serialized_pri_key):
     pri_key = serialization.load_pem_private_key(
         base64.b64decode(serialized_pri_key),
@@ -162,6 +182,7 @@ def deserialize_pri_key(serialized_pri_key):
     return pri_key
 
 
+# ########################### Serialize public key ################# #
 def serialize_pub_key(pub_key):
     serialized_pub_key = pub_key.public_bytes(
         encoding=serialization.Encoding.PEM,
@@ -170,6 +191,7 @@ def serialize_pub_key(pub_key):
     return base64.b64encode(serialized_pub_key)
 
 
+# ########################### De-Serialize public key ################# #
 def deserialize_pub_key(serialized_pub_key):
     pub_key = serialization.load_pem_public_key(
         base64.b64decode(serialized_pub_key),
@@ -178,17 +200,21 @@ def deserialize_pub_key(serialized_pub_key):
     return pub_key
 
 
+# ########################### Load private key ################# #
 def load_private_key(key_file):
     with open(key_file, 'r') as f:
         private_key_str = f.read()
         return deserialize_pri_key(base64.b64encode(private_key_str))
 
 
+# ########################### Load public key ################# #
 def load_public_key(key_file):
     with open(key_file, 'r') as f:
         public_key_str = f.read()
         return deserialize_pub_key(base64.b64encode(public_key_str))
 
+
+# ########################### Gent local ip address ################# #
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
@@ -196,13 +222,8 @@ def get_local_ip():
     s.close()
     return local_ip
 
-def validate_timestamp(timestamp):
-    cur_time = time.time()
-    if cur_time - float(timestamp) > Message.MAX_TIMESTAMP_GAP:
-        print 'Gap between timestamp is too large, invalid message!'
-        return False
-    return True
 
+# ########################### Get free port ################# #
 def get_free_port():
     # get free port : creating a new socket (port is randomly assigned), and close it
     sock = socket.socket()
@@ -211,7 +232,8 @@ def get_free_port():
     sock.close()
     return int(port)
 
-# ---------------------- Nonce related utils -----------------------#
+
+# ########################### Generate Nonce ################# #
 def generate_nonce(size=128):
     nonce_str = os.urandom(size / 8)
     nonce_num = long(nonce_str.encode('hex'), 16)
