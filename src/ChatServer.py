@@ -9,11 +9,8 @@ import socket
 import threading
 import time
 import traceback
-from MessageDetails import MessageStatus, AuthMsg, UserListRes, UserInfoRes, LogoutRes, LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE
-
-
-ERROR_PROMPT = '[ERROR] '
-DEBUG_PROMPT = '[DEBUG] '
+from MessageDetails import MessageStatus, AuthMsg, UserListRes, UserInfoRes, LogoutRes, \
+    LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE, ERROR_PROMPT, DEBUG_PROMPT
 
 
 # ########################### UserState Class ######################## #

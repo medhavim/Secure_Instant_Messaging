@@ -10,13 +10,8 @@ import socket
 import sys
 import threading
 import time
-from MessageDetails import LINE_SEPARATOR, MessageStatus, AuthMsg, MAX_BUFFER_SIZE, SPACE_SEPARATOR, \
-    ConnMsg, ConnStartMsg, TextMsg, DisConnMsg
-
-MAX_LOGIN_ATTEMPTS = 3
-CMD_PROMPT = '>> '
-MSG_PROMPT = '<< '
-ERROR_PROMPT = '[ERROR] '
+from MessageDetails import LINE_SEPARATOR, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ERROR_PROMPT, CMD_PROMPT, MSG_PROMPT, \
+    MAX_LOGIN_ATTEMPTS, MessageStatus, AuthMsg, ConnMsg, ConnStartMsg, TextMsg, DisConnMsg
 
 
 # ########################### Client UserInfo Class ######################### #
@@ -496,8 +491,12 @@ class Client(cmd.Cmd):
 
     # ##### Shortcuts #####- #
     do_exit = do_logout
-
+    do_e = do_logout
     do_quit = do_logout
+    do_q = do_logout
+
+    do_l = do_list
+    do_s = do_send
 
 
     # ############## override default function: will be invoked if inputting invalid command ############### #

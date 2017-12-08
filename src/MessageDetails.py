@@ -1,8 +1,14 @@
 LINE_SEPARATOR = '\n'
 SPACE_SEPARATOR = ' '
+
 MAX_BUFFER_SIZE = 65536
 MAX_TIMESTAMP_GAP = 10
+MAX_LOGIN_ATTEMPTS = 3
 
+ERROR_PROMPT = '[ERROR] '
+DEBUG_PROMPT = '[DEBUG] '
+CMD_PROMPT = '>> '
+MSG_PROMPT = '<< '
 
 # ########################### Client - Server Authentication Message Class ######################## #
 class AuthMsg(object):
