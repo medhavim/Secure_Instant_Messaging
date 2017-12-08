@@ -392,6 +392,18 @@ class Client(cmd.Cmd):
             print 'Error happens when trying to exit the client!'
             os._exit(0)
 
+    def do_exit(self, arg):
+        try:
+            if self._logout_from_server():
+                print '<' + self.user_name + '> successfully logged out.'
+                self._disconnect_all_users()
+                self.client_sock.close()
+                self.recv_sock.close()
+                os._exit(0)
+        except:
+            print 'Error happens when trying to exit the client!'
+            os._exit(0)
+
     def _logout_from_server(self):
         self._send_sym_encrypted_msg_to_server(MessageStatus.LOGOUT, '')
         result, msg = self._recv_sym_encrypted_msg_from_server()
