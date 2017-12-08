@@ -33,11 +33,13 @@ class UserListRes(object):
 
 # ########################### User Info Result Class ######################## #
 class UserInfoRes(object):
-    def __init__(self, ip, port, sec_key, ticket, ticket_signature, public_key, timestamp=None):
+    def __init__(self, ip, port, sec_key, ticket, iv, tag, ticket_signature, public_key, timestamp=None):
         self.ip = ip
         self.port = port
         self.sec_key = sec_key
         self.ticket = ticket
+        self.iv = iv
+        self.tag = tag
         self.ticket_signature = ticket_signature
         self.public_key = public_key
         self.timestamp = timestamp
@@ -45,12 +47,14 @@ class UserInfoRes(object):
 
 # ########################### Client - Client Connection Start Message Class ######################## #
 class ConnStartMsg(object):
-    def __init__(self, user_name, ip, port, public_key, ticket, ticket_signature, n3, timestamp):
+    def __init__(self, user_name, ip, port, public_key, ticket, iv, tag, ticket_signature, n3, timestamp):
         self.user_name = user_name
         self.ip = ip
         self.port = port
         self.public_key = public_key
         self.ticket = ticket
+        self.iv = iv
+        self.tag = tag
         self.ticket_signature = ticket_signature
         self.n3 = n3
         self.timestamp = timestamp

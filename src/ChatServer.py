@@ -137,15 +137,19 @@ class Server:
             key_between_client = base64.b64encode(os.urandom(32))
             timestamp_to_expire = time.time() + 1000
             ticket = request_user_info.user_name + SPACE_SEPARATOR + \
-                     key_between_client + SPACE_SEPARATOR + \
+                     key_between_client + SPACE_SEPARATOR +\
                      str(timestamp_to_expire)
             ticket_signature = fcrypt.sign(self.private_key, ticket)
             target_pubkey = target_user_info.rsa_pub_key
+            iv = base64.b64encode(os.urandom(16))
+            encrypted_ticket, tag = fcrypt.symmetric_encryption(target_user_info.secret_key, iv, ticket)
             user_info_msg = UserInfoRes(
                 target_user_info.ip,
                 target_user_info.port,
                 key_between_client,
-                ticket,
+                encrypted_ticket,
+                iv,
+                tag,
                 ticket_signature,
                 fcrypt.serialize_pub_key(target_pubkey)
             )
@@ -307,7 +311,8 @@ class Server:
                         self.logout_handler(user_dict, client_addr, connection, decrypted_response_from_client)
                     else:
                         print ERROR_PROMPT + 'Illegal message type: ', msg_type
-        except:
+        except Exception as e:
+            print e
             print ERROR_PROMPT + 'Error Encountered when handling client messages, break the connection!'
             self.client_error_handler(connection, client_addr)
         finally:

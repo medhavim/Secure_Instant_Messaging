@@ -19,9 +19,11 @@ class UserInfo:
     def __init__(self):
         self.address = None
         self.sec_key = None
-        self.lic = None
+        self.public_key = None
         self.ticket = None
         self.ticket_signature = None
+        self.iv = None
+        self.tag = None
         self.info_known = False
         self.n3 = None
         self.n4 = None
@@ -197,6 +199,8 @@ class Client(cmd.Cmd):
             user_dict.sec_key = user_info.sec_key
             user_dict.public_key = fcrypt.deserialize_pub_key(user_info.public_key)
             user_dict.ticket = user_info.ticket
+            user_dict.iv = user_info.iv
+            user_dict.tag = user_info.tag
             user_dict.ticket_signature = user_info.ticket_signature
             user_dict.info_known = True
 
@@ -210,6 +214,8 @@ class Client(cmd.Cmd):
             self.client_port,
             fcrypt.serialize_pub_key(self.rsa_pub_key),
             target_client_info.ticket,
+            target_client_info.iv,
+            target_client_info.tag,
             target_client_info.ticket_signature,
             target_client_info.n3,
             time.time()
@@ -266,7 +272,9 @@ class Client(cmd.Cmd):
 
     # ########################### Start the Client - Client connection ######################### #
     def start_connection(self, msg_received):
-        ticket = msg_received.ticket
+        tag = msg_received.tag
+        iv_from_user = msg_received.iv
+        ticket = fcrypt.symmetric_decryption(self.shared_dh_key, iv_from_user, tag, msg_received.ticket)
         ticket_signature = msg_received.ticket_signature
         if not fcrypt.verify_signature(self.server_pub_key, ticket, ticket_signature):
             return
@@ -393,11 +401,11 @@ class Client(cmd.Cmd):
 
     # ###################### function to send encrypted data to another client #################### #
     def send_encrypted_data_to_client(self, target_client, msg_type, msg_obj):
-        response_to_server = fcrypt.asymmetric_encryption(target_client.public_key,
+        response_to_client = fcrypt.asymmetric_encryption(target_client.public_key,
                                                           pickle.dumps(msg_obj, pickle.HIGHEST_PROTOCOL))
         msg = dict()
         msg['type'] = msg_type
-        msg['data'] = response_to_server
+        msg['data'] = response_to_client
         self.send_sock.sendto(json.dumps(msg), target_client.address)
 
     # ########################### A static method to solve the server's challenge ######################### #
@@ -473,7 +481,8 @@ class Client(cmd.Cmd):
                     print ERROR_PROMPT + 'Cannot send message to the client because it is not online.'
         except (socket.error, ValueError) as e:
             self.retry_login()
-        except:
+        except Exception as e:
+            print e
             print ERROR_PROMPT + 'Unknown error encountered while trying to send message to another user!'
 
     # ########################### logout the user and exit the program ######################### #
