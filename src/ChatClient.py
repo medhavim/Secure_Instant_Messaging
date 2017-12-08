@@ -180,61 +180,9 @@ class Client(cmd.Cmd):
         else:
             return False
 
-    # --------------------------- list online users ------------------------- #
-    def do_list(self, arg):
-        try:
-            self._send_sym_encrypted_msg_to_server(MessageStatus.LIST, 'list')
-            validate_result, list_response = self._recv_sym_encrypted_msg_from_server()
-            if validate_result:
-                print MSG_PROMPT + 'Online users: ' + ', '.join(list_response.user_names.split(SPACE_SEPARATOR))
-                # set the client information in self.online_list
-                parsed_list_response = list_response.user_names.split(SPACE_SEPARATOR)
-                for user in parsed_list_response:
-                    if user != self.user_name and user not in self.online_list:
-                        self.online_list[user] = UserInfo()
-        except (socket.error, ValueError) as e:
-            self._re_login()
-        except:
-            print 'Unknown error while trying to get online user list from the server!'
-
-    # --------------------------- send message to another user ------------------------- #
-    def do_send(self, arg):
-        try:
-            index = arg.find(SPACE_SEPARATOR)
-            if index != -1:
-                receiver_name = arg[0:index].strip()
-                msg = arg[index:].strip()
-            else:
-                receiver_name = ''
-                msg = ''
-            if receiver_name == self.user_name:
-                print 'Cannot send message to yourself!'
-            elif receiver_name not in self.online_list:
-                print 'User not in client list! Try using list command to update the client list.'
-            else:
-                receiver_info = self.online_list[receiver_name]
-                # if we don't know the receiver's user information
-                if not receiver_info.info_known:
-                    self._get_user_info(receiver_name)
-                # if we haven't connected to this user
-                if receiver_info.info_known and not receiver_info.connected:
-                    self._connect_to_user(receiver_info)
-                    # wait 1 seconds before successfully connected
-                    time.sleep(1)
-                # if we have already connected to this user, send message to the user
-                if receiver_info.connected:
-                    print 'Sent message to the user <' + receiver_name + '>'
-                    self._send_text_msg(msg, receiver_info)
-                # otherwise we cannot send message to the user
-                else:
-                    print 'Cannot send message to the user because it is not connected.'
-        except (socket.error, ValueError) as e:
-            self._re_login()
-        except:
-            print 'Unknown error happens when trying to send message to another user!'
 
     # --------------------------- get user information from the server ------------------------- #
-    def _get_user_info(self, user_name):
+    def get_user_details(self, user_name):
         self._send_sym_encrypted_msg_to_server(MessageStatus.TICKET_TO_USER, user_name)
         validate_result, user_info_obj = self._recv_sym_encrypted_msg_from_server()
         if validate_result:
@@ -248,7 +196,7 @@ class Client(cmd.Cmd):
             user_info.info_known = True
 
     # --------------------------- build connection with the user ------------------------- #
-    def _connect_to_user(self, target_user_info):
+    def connect_to_client(self, target_user_info):
         # start authentication process
         target_user_info.n3 = Crypto.generate_nonce()
         msg = ConnStartMsg(
@@ -301,17 +249,17 @@ class Client(cmd.Cmd):
                 print 'Timestamp of the message from another user is invalid, drop the message!'
                 continue
             if msg_type == MessageStatus.START_CONN:
-                self._handle_conn_start(msg_obj)
+                self.start_connection(msg_obj)
             elif msg_type == MessageStatus.END_CONN:
                 self._handle_conn_back(msg_obj)
             elif msg_type == MessageStatus.USER_RES:
-                self._handle_conn_end(msg_obj)
+                self.end_connection(msg_obj)
             elif msg_type == MessageStatus.DISCONNECT:
                 self._handle_disconn_msg(msg_obj)
             elif msg_type == MessageStatus.PLAIN_MSG:
                 self._handle_text_msg(msg_obj)
 
-    def _handle_conn_start(self, conn_start_msg):
+    def start_connection(self, conn_start_msg):
         ticket = conn_start_msg.ticket
         ticket_signature = conn_start_msg.ticket_signature
         if not Crypto.verify_signature(self.server_pub_key, ticket, ticket_signature):
@@ -358,7 +306,7 @@ class Client(cmd.Cmd):
             )
             self._send_encrypted_msg_to_user(user_info, MessageStatus.USER_RES, conn_end_msg)
 
-    def _handle_conn_end(self, conn_end_msg):
+    def end_connection(self, conn_end_msg):
         user_info = self.online_list[conn_end_msg.user_name]
         decrypted_n4 = Crypto.symmetric_decryption(user_info.sec_key, conn_end_msg.iv, conn_end_msg.tag,
                                                       conn_end_msg.encrypted_n4)
@@ -383,37 +331,12 @@ class Client(cmd.Cmd):
         if user_name in self.online_list:
             del self.online_list[user_name]
 
-    # --------------------------- logout the user and exit the program ------------------------- #
-    def do_logout(self, arg):
-        try:
-            if self._logout_from_server():
-                print '<' + self.user_name + '> successfully logged out.'
-                self._disconnect_all_users()
-                self.client_sock.close()
-                self.recv_sock.close()
-                os._exit(0)
-        except:
-            print 'Error happens when trying to exit the client!'
-            os._exit(0)
-
-    def do_exit(self, arg):
-        try:
-            if self._logout_from_server():
-                print '<' + self.user_name + '> successfully logged out.'
-                self._disconnect_all_users()
-                self.client_sock.close()
-                self.recv_sock.close()
-                os._exit(0)
-        except:
-            print 'Error happens when trying to exit the client!'
-            os._exit(0)
-
-    def _logout_from_server(self):
+    def server_logout(self):
         self._send_sym_encrypted_msg_to_server(MessageStatus.LOGOUT, '')
         result, msg = self._recv_sym_encrypted_msg_from_server()
         return result
 
-    def _disconnect_all_users(self):
+    def logout_users(self):
         for user_name, user_info in self.online_list.iteritems():
             if user_info.connected:
                 print 'Disconnecting the user <' + user_name + '>'
@@ -421,14 +344,14 @@ class Client(cmd.Cmd):
                 self._send_encrypted_msg_to_user(user_info, MessageStatus.DISCONNECT, disconn_msg)
 
     # ------------------------ try to re-login if server broken down or reset ----------------------- #
-    def _re_login(self):
+    def retry_login(self):
         print 'Server broken down or reset, please try to re-login!'
         self.client_sock.close()
         self.user_name = None
         self.rsa_pri_key, self.rsa_pub_key = Crypto.generate_rsa_key_pair()
         self.dh_pri_key, self.dh_pub_key = Crypto.generate_dh_key_pair()
         self.shared_dh_key = None
-        self.login()
+        self.run()
 
     # --------------------------- common functions for message exchange ------------------------- #
     def _send_sym_encrypted_msg_to_server(self, message_type, msg):
@@ -437,7 +360,7 @@ class Client(cmd.Cmd):
         plain_msg = msg + LINE_SEPARATOR + str(send_time)
         encrypted_msg, tag = Crypto.symmetric_encryption(self.shared_dh_key, iv, plain_msg)
         msg = dict()
-        msg['type'] = message_type 
+        msg['type'] = message_type
         msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR+\
                       Crypto.asymmetric_encryption(self.server_pub_key, tag)+ LINE_SEPARATOR + encrypted_msg
         self.client_sock.sendall(json.dumps(msg))
@@ -481,6 +404,84 @@ class Client(cmd.Cmd):
             if Crypto.generate_hash(guessed_challenge) == challenge_hash:
                 return guessed_challenge
             n += 1
+
+        # --------------------------- list online users ------------------------- #
+    def do_list(self, arg):
+        try:
+            self._send_sym_encrypted_msg_to_server(MessageStatus.LIST, 'list')
+            validate_result, list_response = self._recv_sym_encrypted_msg_from_server()
+            if validate_result:
+                print MSG_PROMPT + 'Online users: ' + ', '.join(list_response.user_names.split(SPACE_SEPARATOR))
+                # set the client information in self.online_list
+                parsed_list_response = list_response.user_names.split(SPACE_SEPARATOR)
+                for user in parsed_list_response:
+                    if user != self.user_name and user not in self.online_list:
+                        self.online_list[user] = UserInfo()
+        except (socket.error, ValueError) as e:
+            self.retry_login()
+        except:
+            print 'Unknown error while trying to get online user list from the server!'
+
+        # --------------------------- send message to another user ------------------------- #
+    def do_send(self, arg):
+        try:
+            index = arg.find(SPACE_SEPARATOR)
+            if index != -1:
+                receiver_name = arg[0:index].strip()
+                msg = arg[index:].strip()
+            else:
+                receiver_name = ''
+                msg = ''
+            if receiver_name == self.user_name:
+                print 'Cannot send message to yourself!'
+            elif receiver_name not in self.online_list:
+                print 'User not in client list! Try using list command to update the client list.'
+            else:
+                receiver_info = self.online_list[receiver_name]
+                # if we don't know the receiver's user information
+                if not receiver_info.info_known:
+                    self.get_user_details(receiver_name)
+                # if we haven't connected to this user
+                if receiver_info.info_known and not receiver_info.connected:
+                    self.connect_to_client(receiver_info)
+                    # wait 1 seconds before successfully connected
+                    time.sleep(1)
+                # if we have already connected to this user, send message to the user
+                if receiver_info.connected:
+                    print 'Sent message to the user <' + receiver_name + '>'
+                    self._send_text_msg(msg, receiver_info)
+                # otherwise we cannot send message to the user
+                else:
+                    print 'Cannot send message to the user because it is not connected.'
+        except (socket.error, ValueError) as e:
+            self.retry_login()
+        except:
+            print 'Unknown error happens when trying to send message to another user!'
+
+        # --------------------------- logout the user and exit the program ------------------------- #
+    def do_logout(self, arg):
+        try:
+            if self.server_logout():
+                print '<' + self.user_name + '> successfully logged out.'
+                self.logout_users()
+                self.client_sock.close()
+                self.recv_sock.close()
+                os._exit(0)
+        except:
+            print 'Error happens when trying to exit the client!'
+            os._exit(0)
+
+    def do_exit(self, arg):
+        try:
+            if self.server_logout():
+                print '<' + self.user_name + '> successfully logged out.'
+                self.logout_users()
+                self.client_sock.close()
+                self.recv_sock.close()
+                os._exit(0)
+        except:
+            print 'Error happens when trying to exit the client!'
+            os._exit(0)
 
     # -------------- override default function: will be invoked if inputting invalid command -------------- #
     def default(self, line):
