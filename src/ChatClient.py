@@ -54,7 +54,7 @@ class Client(cmd.Cmd):
         # online-users known to the chatclient
         self.online_list = dict()
         # start socket for receiving messages
-        self.start_recv_sock()
+        self.run_receive_socket()
         # start commandline interactive mode
         cmd.Cmd.__init__(self)
 
@@ -78,7 +78,7 @@ class Client(cmd.Cmd):
     def login(self):
         user_name = raw_input('Enter your username: ')
         password = getpass.getpass('Enter your password: ')
-        login_result = False
+        log_result = False
         self.user_name = user_name
         try:
             self.client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -91,28 +91,27 @@ class Client(cmd.Cmd):
             # Step 2: start the authentication with the server
             # Send the solved challenge along with A's identity to authenticate to the server
             n1, server_auth_response = self.start_authentication(solved_challenge, user_name, password)
-            authentication_complete, self.shared_dh_key, n2 = self.get_server_shared_key(n1, server_auth_response)
+            isAuthenticationComplete, self.shared_dh_key, n2 = self.get_server_shared_key(n1, server_auth_response)
 
             # Step 3: Establish the shared key and finish logging in the user
-            if authentication_complete and self.end_authentication(n2):
-                login_result = True
+            if isAuthenticationComplete and self.end_authentication(n2):
+                log_result = True
         except socket.error:
-            print 'Cannot connect to the server in the authentication process, exiting the program!'
+            print 'Cannot connect to the server to authenticate, exiting the program!'
             os._exit(0)
         except Exception as e:
             print e
             print 'Unknown error happens when trying to login: ', sys.exc_info()[0], ', please retry!'
         finally:
-            if not login_result:
+            if not log_result:
                 self.client_sock.close()
-            return login_result, user_name
+            return log_result, user_name
 
     def login_request(self):
         msg = dict()
         msg['type'] = MessageStatus.INIT
         msg['data'] = ''
-        init_msg = json.dumps(msg)
-        self.client_sock.sendall(init_msg)
+        self.client_sock.sendall(json.dumps(msg))
         challenge = self.client_sock.recv(MAX_BUFFER_SIZE)
         return challenge
 
@@ -154,12 +153,11 @@ class Client(cmd.Cmd):
     def get_server_shared_key(self, expected_n1, server_auth_response):
         msg = json.loads(server_auth_response)
         msg_type = msg['type']
-        data = msg['data']
         if msg_type == MessageStatus.INVALID_RES:
             return False, None, None
-        decrypted_auth_start_response = Crypto.asymmetric_decryption(self.rsa_pri_key, data)
-        res_obj = pickle.loads(decrypted_auth_start_response)
-        server_dh_key, n1, n2 = res_obj.dh_pub_key, res_obj.n1, res_obj.n2
+        decrypted_server_auth_response = pickle.loads(Crypto.asymmetric_decryption(self.rsa_pri_key, msg['data']))
+        server_dh_key, n1, n2 = decrypted_server_auth_response.dh_pub_key, \
+                                decrypted_server_auth_response.n1, decrypted_server_auth_response.n2
         if str(expected_n1) != str(n1):
             return False, None, None
         shared_dh_key = Crypto.generate_shared_dh_key(self.dh_pri_key, Crypto.deserialize_pub_key(server_dh_key))
@@ -172,139 +170,132 @@ class Client(cmd.Cmd):
         msg['type'] = MessageStatus.END_AUTH
         msg['data'] = Crypto.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR+\
                       Crypto.asymmetric_encryption(self.server_pub_key, tag)+ LINE_SEPARATOR + encrypted_n2
-        auth_end_msg = json.dumps(msg)
-        self.client_sock.sendall(auth_end_msg)
-        validate_result, decrypted_nonce_response = self._recv_sym_encrypted_msg_from_server(False)
-        if validate_result and long(decrypted_nonce_response) == long(n2) + 1:
+        self.client_sock.sendall(json.dumps(msg))
+        isResultValid, decrypted_nonce_res = self.receive_encrypted_data_from_server(False)
+        if isResultValid and long(decrypted_nonce_res) == long(n2) + 1:
             return True
         else:
             return False
 
 
-    # --------------------------- get user information from the server ------------------------- #
+    # --------------------------- send message to server to get other client info ------------------------- #
     def get_user_details(self, user_name):
-        self._send_sym_encrypted_msg_to_server(MessageStatus.TICKET_TO_USER, user_name)
-        validate_result, user_info_obj = self._recv_sym_encrypted_msg_from_server()
-        if validate_result:
-            # print target_address
-            user_info = self.online_list[user_name]
-            user_info.address = (user_info_obj.ip, user_info_obj.port)
-            user_info.sec_key = user_info_obj.sec_key
-            user_info.pub_key = Crypto.deserialize_pub_key(user_info_obj.pub_key)
-            user_info.ticket = user_info_obj.ticket
-            user_info.ticket_signature = user_info_obj.ticket_signature
-            user_info.info_known = True
+        self.send_encrypted_data_to_server(MessageStatus.TICKET_TO_USER, user_name)
+        isResultValid, user_info = self.receive_encrypted_data_from_server()
+        if isResultValid:
+            user_dict = self.online_list[user_name]
+            user_dict.address = (user_info.ip, user_info.port)
+            user_dict.sec_key = user_info.sec_key
+            user_dict.pub_key = Crypto.deserialize_pub_key(user_info.pub_key)
+            user_dict.ticket = user_info.ticket
+            user_dict.ticket_signature = user_info.ticket_signature
+            user_dict.info_known = True
 
-    # --------------------------- build connection with the user ------------------------- #
-    def connect_to_client(self, target_user_info):
+    # --------------------------- establish connection with another user ------------------------- #
+    def connect_to_client(self, target_client_info):
         # start authentication process
-        target_user_info.n3 = Crypto.generate_nonce()
+        target_client_info.n3 = Crypto.generate_nonce()
         msg = ConnStartMsg(
             self.user_name,
             self.client_ip,
             self.client_port,
             Crypto.serialize_pub_key(self.rsa_pub_key),
-            target_user_info.ticket,
-            target_user_info.ticket_signature,
-            target_user_info.n3,
+            target_client_info.ticket,
+            target_client_info.ticket_signature,
+            target_client_info.n3,
             time.time()
         )
-        self._send_encrypted_msg_to_user(target_user_info, MessageStatus.START_CONN, msg)
+        self.send_encrypted_data_to_client(target_client_info, MessageStatus.START_CONN, msg)
 
-    # --------------------------- send the final message to the target user ------------------------- #
-    def _send_text_msg(self, msg, receiver_info):
+    # --------------------------- send message to the another client user ------------------------- #
+    def create_msg(self, msg, target_info):
         iv = base64.b64encode(os.urandom(16))
-        sec_key = receiver_info.sec_key
-        text_msg = TextMsg(
+        sec_key = target_info.sec_key
+        msg = TextMsg(
             self.user_name,
-            Crypto.asymmetric_encryption(receiver_info.pub_key, iv),
-            Crypto.asymmetric_encryption(receiver_info.pub_key, Crypto.symmetric_encryption(sec_key, iv, msg)[1]),
+            Crypto.asymmetric_encryption(target_info.pub_key, iv),
+            Crypto.asymmetric_encryption(target_info.pub_key, Crypto.symmetric_encryption(sec_key, iv, msg)[1]),
             Crypto.symmetric_encryption(sec_key, iv, msg)[0],
             Crypto.sign(self.rsa_pri_key, msg),
             time.time()
         )
-        self._send_encrypted_msg_to_user(receiver_info, MessageStatus.PLAIN_MSG, text_msg)
+        self.send_encrypted_data_to_client(target_info, MessageStatus.PLAIN_MSG, msg)
 
-    # --------------------------- start a server socket to receive messages from other users ------------------------- #
-    def start_recv_sock(self):
+    def run_receive_socket(self):
         try:
-            print 'Start recv socket on ' + self.client_ip + ':' + str(self.client_port)
+            print 'Start client socket on ' + self.client_ip + ':' + str(self.client_port)
             self.recv_sock.bind((self.client_ip, self.client_port))
-            threading.Thread(target=self.listen_for_message).start()
+            threading.Thread(target=self.start_listening).start()
         except socket.error:
             print 'Failed to start the socket for receiving messages'
 
-    def listen_for_message(self):
+    def start_listening(self):
         while True:
-            msg, addr = self.recv_sock.recvfrom(MAX_BUFFER_SIZE)
+            msg, address = self.recv_sock.recvfrom(MAX_BUFFER_SIZE)
             if not msg:
                 break
             msg = json.loads(msg)
             msg_type = msg['type']
-            data = msg['data']
-            decrypted_data = Crypto.asymmetric_decryption(self.rsa_pri_key, data)
-            msg_obj = pickle.loads(decrypted_data)
-            # if the message's timestamp is invalid
-            if not Crypto.validate_timestamp(msg_obj.timestamp):
-                print 'Timestamp of the message from another user is invalid, drop the message!'
+            msg_from_client = pickle.loads(Crypto.asymmetric_decryption(self.rsa_pri_key, msg['data']))
+            if not Crypto.validate_timestamp(msg_from_client.timestamp):
+                print 'Timestamp of the message from another user is invalid'
                 continue
             if msg_type == MessageStatus.START_CONN:
-                self.start_connection(msg_obj)
+                self.start_connection(msg_from_client)
             elif msg_type == MessageStatus.END_CONN:
-                self._handle_conn_back(msg_obj)
+                self.response_to_connection(msg_from_client)
             elif msg_type == MessageStatus.USER_RES:
-                self.end_connection(msg_obj)
+                self.end_connection(msg_from_client)
             elif msg_type == MessageStatus.DISCONNECT:
-                self._handle_disconn_msg(msg_obj)
+                self.disconnect_client(msg_from_client)
             elif msg_type == MessageStatus.PLAIN_MSG:
-                self._handle_text_msg(msg_obj)
+                self.decrypt_msg_from_client(msg_from_client)
 
-    def start_connection(self, conn_start_msg):
-        ticket = conn_start_msg.ticket
-        ticket_signature = conn_start_msg.ticket_signature
+    def start_connection(self, msg_received):
+        ticket = msg_received.ticket
+        ticket_signature = msg_received.ticket_signature
         if not Crypto.verify_signature(self.server_pub_key, ticket, ticket_signature):
             return
-        src_user_name, sec_session_key, timestamp_to_expire = ticket.split(SPACE_SEPARATOR)
-        if src_user_name != conn_start_msg.user_name or float(timestamp_to_expire) < time.time():
+        user_name_in_ticket, session_key_in_ticket, timestamp_to_expire = ticket.split(SPACE_SEPARATOR)
+        if user_name_in_ticket != msg_received.user_name or float(timestamp_to_expire) < time.time():
             return
-        src_user_info = UserInfo()
-        src_user_info.address = (conn_start_msg.ip, conn_start_msg.port)
-        src_user_info.pub_key = Crypto.deserialize_pub_key(conn_start_msg.pub_key)
-        src_user_info.sec_key = sec_session_key
-        src_user_info.info_known = True
-        self.online_list[conn_start_msg.user_name] = src_user_info
+        received_from_user = UserInfo()
+        received_from_user.address = (msg_received.ip, msg_received.port)
+        received_from_user.pub_key = Crypto.deserialize_pub_key(msg_received.pub_key)
+        received_from_user.sec_key = session_key_in_ticket
+        received_from_user.info_known = True
+        self.online_list[msg_received.user_name] = received_from_user
         # send connection back message to the initiator
-        n3 = conn_start_msg.n3
-        src_user_info.n4 = Crypto.generate_nonce()
+        n3 = msg_received.n3
+        received_from_user.n4 = Crypto.generate_nonce()
         iv = base64.b64encode(os.urandom(16))
-        conn_back_msg = ConnBackMsg(
+        response_msg = ConnBackMsg(
             self.user_name,
             iv,
-            Crypto.symmetric_encryption(src_user_info.sec_key, iv, str(n3))[1],
-            Crypto.symmetric_encryption(src_user_info.sec_key, iv, str(n3))[0],
-            src_user_info.n4,
+            Crypto.symmetric_encryption(received_from_user.sec_key, iv, str(n3))[1],
+            Crypto.symmetric_encryption(received_from_user.sec_key, iv, str(n3))[0],
+            received_from_user.n4,
             time.time()
         )
-        self._send_encrypted_msg_to_user(src_user_info, MessageStatus.END_CONN, conn_back_msg)
+        self.send_encrypted_data_to_client(received_from_user, MessageStatus.END_CONN, response_msg)
 
-    def _handle_conn_back(self, conn_back_msg):
-        user_info = self.online_list[conn_back_msg.user_name]
-        decrypted_n3 = Crypto.symmetric_decryption(user_info.sec_key,
-                                                      conn_back_msg.iv,
-                                                   conn_back_msg.tag,
-                                                      conn_back_msg.encrypted_n3)
-        if str(decrypted_n3) == str(user_info.n3):
-            # print 'Successfully connected to the user <' + conn_back_msg.user_name + '>'
-            user_info.connected = True
+    def response_to_connection(self, msg_received):
+        user_dict = self.online_list[msg_received.user_name]
+        decrypted_n3 = Crypto.symmetric_decryption(user_dict.sec_key,
+                                                   msg_received.iv,
+                                                   msg_received.tag,
+                                                   msg_received.encrypted_n3)
+        if str(decrypted_n3) == str(user_dict.n3):
+            user_dict.connected = True
             iv = base64.b64encode(os.urandom(16))
-            conn_end_msg = ConnEndMsg(
+            response_to_client = ConnEndMsg(
                 self.user_name,
                 iv,
-                Crypto.symmetric_encryption(user_info.sec_key, iv, str(conn_back_msg.n4))[1],
-                Crypto.symmetric_encryption(user_info.sec_key, iv, str(conn_back_msg.n4))[0],
+                Crypto.symmetric_encryption(user_dict.sec_key, iv, str(msg_received.n4))[1],
+                Crypto.symmetric_encryption(user_dict.sec_key, iv, str(msg_received.n4))[0],
                 time.time()
             )
-            self._send_encrypted_msg_to_user(user_info, MessageStatus.USER_RES, conn_end_msg)
+            self.send_encrypted_data_to_client(user_dict, MessageStatus.USER_RES, response_to_client)
 
     def end_connection(self, conn_end_msg):
         user_info = self.online_list[conn_end_msg.user_name]
@@ -313,39 +304,37 @@ class Client(cmd.Cmd):
         if str(user_info.n4) == str(decrypted_n4):
             user_info.connected = True
 
-    def _handle_text_msg(self, text_msg):
-        user_name = text_msg.user_name
+    def decrypt_msg_from_client(self, msg):
+        user_name = msg.user_name
         if user_name in self.online_list and self.online_list[user_name].connected:
-            user_info = self.online_list[user_name]
-            iv = Crypto.asymmetric_decryption(self.rsa_pri_key, text_msg.iv)
-            tag = Crypto.asymmetric_decryption(self.rsa_pri_key, text_msg.tag)
-            encrypted_msg = text_msg.encrypted_msg
-            decrypted_msg = Crypto.symmetric_decryption(user_info.sec_key, iv, tag, encrypted_msg)
-            msg_signature = text_msg.msg_signature
-            if Crypto.verify_signature(user_info.pub_key, decrypted_msg, msg_signature):
+            user_dict = self.online_list[user_name]
+            iv = Crypto.asymmetric_decryption(self.rsa_pri_key, msg.iv)
+            tag = Crypto.asymmetric_decryption(self.rsa_pri_key, msg.tag)
+            decrypted_msg = Crypto.symmetric_decryption(user_dict.sec_key, iv, tag, msg.encrypted_msg)
+            if Crypto.verify_signature(user_dict.pub_key, decrypted_msg, msg.msg_signature):
                 print '\n' + MSG_PROMPT + user_name + " has sent you: " + decrypted_msg
                 print self.user_name + CMD_PROMPT,
 
-    def _handle_disconn_msg(self, disconn_msg):
-        user_name = disconn_msg.user_name
+    def disconnect_client(self, disconnect_msg):
+        user_name = disconnect_msg.user_name
         if user_name in self.online_list:
             del self.online_list[user_name]
 
     def server_logout(self):
-        self._send_sym_encrypted_msg_to_server(MessageStatus.LOGOUT, '')
-        result, msg = self._recv_sym_encrypted_msg_from_server()
-        return result
+        self.send_encrypted_data_to_server(MessageStatus.LOGOUT, '')
+        isValid, msg = self.receive_encrypted_data_from_server()
+        return isValid
 
-    def logout_users(self):
-        for user_name, user_info in self.online_list.iteritems():
-            if user_info.connected:
+    def disconnect_other_clients(self):
+        for user_name, user_dict in self.online_list.iteritems():
+            if user_dict.connected:
                 print 'Disconnecting the user <' + user_name + '>'
-                disconn_msg = DisconnMsg(self.user_name, time.time())
-                self._send_encrypted_msg_to_user(user_info, MessageStatus.DISCONNECT, disconn_msg)
+                disconnect_msg = DisconnMsg(self.user_name, time.time())
+                self.send_encrypted_data_to_client(user_dict, MessageStatus.DISCONNECT, disconnect_msg)
 
-    # ------------------------ try to re-login if server broken down or reset ----------------------- #
+    # ------------------------ try to re-login if something went wrong in server ----------------------- #
     def retry_login(self):
-        print 'Server broken down or reset, please try to re-login!'
+        print 'Something went wrong with server, please try to login again!'
         self.client_sock.close()
         self.user_name = None
         self.rsa_pri_key, self.rsa_pub_key = Crypto.generate_rsa_key_pair()
@@ -353,11 +342,11 @@ class Client(cmd.Cmd):
         self.shared_dh_key = None
         self.run()
 
-    # --------------------------- common functions for message exchange ------------------------- #
-    def _send_sym_encrypted_msg_to_server(self, message_type, msg):
+    # --------------------------- function to send/receive data from server/client ------------------------- #
+    def send_encrypted_data_to_server(self, message_type, data):
         send_time = time.time()
         iv = base64.b64encode(os.urandom(16))
-        plain_msg = msg + LINE_SEPARATOR + str(send_time)
+        plain_msg = data + LINE_SEPARATOR + str(send_time)
         encrypted_msg, tag = Crypto.symmetric_encryption(self.shared_dh_key, iv, plain_msg)
         msg = dict()
         msg['type'] = message_type
@@ -365,34 +354,32 @@ class Client(cmd.Cmd):
                       Crypto.asymmetric_encryption(self.server_pub_key, tag)+ LINE_SEPARATOR + encrypted_msg
         self.client_sock.sendall(json.dumps(msg))
 
-    def _recv_sym_encrypted_msg_from_server(self, validate_timestamp=True):
-        encrypted_server_response = self.client_sock.recv(MAX_BUFFER_SIZE)
-        msg = json.loads(encrypted_server_response)
+    def receive_encrypted_data_from_server(self, validate_timestamp=True):
+        encrypted_response = self.client_sock.recv(MAX_BUFFER_SIZE)
+        msg = json.loads(encrypted_response)
         msg_type = msg['type']
         data = msg['data']
         if msg_type == MessageStatus.INVALID_RES:
-            #print data
             return False, data
         else:
             iv, tag, encrypted_response_without_iv = data.split(LINE_SEPARATOR)
-            decrypted_response = Crypto.symmetric_decryption(self.shared_dh_key,
+            response_from_server = Crypto.symmetric_decryption(self.shared_dh_key,
                                                           Crypto.asymmetric_decryption(self.rsa_pri_key, iv),
                                                           Crypto.asymmetric_decryption(self.rsa_pri_key, tag),
                                                           encrypted_response_without_iv)
             if validate_timestamp:
-                decrypted_response = pickle.loads(decrypted_response)
-                if not Crypto.validate_timestamp(decrypted_response.timestamp):
+                response_from_server = pickle.loads(response_from_server)
+                if not Crypto.validate_timestamp(response_from_server.timestamp):
                     return False, None
-            return True, decrypted_response
+            return True, response_from_server
 
-    def _send_encrypted_msg_to_user(self, target_user_info, message_type, msg_obj):
-        encrypted_msg = Crypto.asymmetric_encryption(target_user_info.pub_key,
-                                                  pickle.dumps(msg_obj, pickle.HIGHEST_PROTOCOL))
+    def send_encrypted_data_to_client(self, target_client, msg_type, msg_obj):
+        response_to_server = Crypto.asymmetric_encryption(target_client.pub_key,
+                                                     pickle.dumps(msg_obj, pickle.HIGHEST_PROTOCOL))
         msg = dict()
-        msg['type'] = message_type 
-        msg['data'] = encrypted_msg
-        msg = json.dumps(msg)
-        self.send_sock.sendto(msg, target_user_info.address)
+        msg['type'] = msg_type
+        msg['data'] = response_to_server
+        self.send_sock.sendto(json.dumps(msg), target_client.address)
 
     @staticmethod
     def solve_challenge(trunc_challenge, challenge_hash):
@@ -405,15 +392,15 @@ class Client(cmd.Cmd):
                 return guessed_challenge
             n += 1
 
-        # --------------------------- list online users ------------------------- #
+        # --------------------------- show online clients ------------------------- #
     def do_list(self, arg):
         try:
-            self._send_sym_encrypted_msg_to_server(MessageStatus.LIST, 'list')
-            validate_result, list_response = self._recv_sym_encrypted_msg_from_server()
-            if validate_result:
-                print MSG_PROMPT + 'Online users: ' + ', '.join(list_response.user_names.split(SPACE_SEPARATOR))
+            self.send_encrypted_data_to_server(MessageStatus.LIST, 'list')
+            isValid, response_of_list = self.receive_encrypted_data_from_server()
+            if isValid:
+                print MSG_PROMPT + 'Online users: ' + ', '.join(response_of_list.user_names.split(SPACE_SEPARATOR))
                 # set the client information in self.online_list
-                parsed_list_response = list_response.user_names.split(SPACE_SEPARATOR)
+                parsed_list_response = response_of_list.user_names.split(SPACE_SEPARATOR)
                 for user in parsed_list_response:
                     if user != self.user_name and user not in self.online_list:
                         self.online_list[user] = UserInfo()
@@ -422,7 +409,7 @@ class Client(cmd.Cmd):
         except:
             print 'Unknown error while trying to get online user list from the server!'
 
-        # --------------------------- send message to another user ------------------------- #
+        # --------------------------- send message to other clients ------------------------- #
     def do_send(self, arg):
         try:
             index = arg.find(SPACE_SEPARATOR)
@@ -437,53 +424,53 @@ class Client(cmd.Cmd):
             elif receiver_name not in self.online_list:
                 print 'User not in client list! Try using list command to update the client list.'
             else:
-                receiver_info = self.online_list[receiver_name]
+                destination_info = self.online_list[receiver_name]
                 # if we don't know the receiver's user information
-                if not receiver_info.info_known:
+                if not destination_info.info_known:
                     self.get_user_details(receiver_name)
                 # if we haven't connected to this user
-                if receiver_info.info_known and not receiver_info.connected:
-                    self.connect_to_client(receiver_info)
+                if destination_info.info_known and not destination_info.connected:
+                    self.connect_to_client(destination_info)
                     # wait 1 seconds before successfully connected
                     time.sleep(1)
                 # if we have already connected to this user, send message to the user
-                if receiver_info.connected:
-                    print 'Sent message to the user <' + receiver_name + '>'
-                    self._send_text_msg(msg, receiver_info)
+                if destination_info.connected:
+                    print 'Sending message to the user <' + receiver_name + '>'
+                    self.create_msg(msg, destination_info)
                 # otherwise we cannot send message to the user
                 else:
-                    print 'Cannot send message to the user because it is not connected.'
+                    print 'Cannot send message to the client because it is not online.'
         except (socket.error, ValueError) as e:
             self.retry_login()
         except:
-            print 'Unknown error happens when trying to send message to another user!'
+            print 'Unknown error happened when trying to send message to another user!'
 
         # --------------------------- logout the user and exit the program ------------------------- #
     def do_logout(self, arg):
         try:
             if self.server_logout():
                 print '<' + self.user_name + '> successfully logged out.'
-                self.logout_users()
+                self.disconnect_other_clients()
                 self.client_sock.close()
                 self.recv_sock.close()
                 os._exit(0)
         except:
-            print 'Error happens when trying to exit the client!'
+            print 'Error happened when trying to exit the client!'
             os._exit(0)
 
     def do_exit(self, arg):
         try:
             if self.server_logout():
                 print '<' + self.user_name + '> successfully logged out.'
-                self.logout_users()
+                self.disconnect_other_clients()
                 self.client_sock.close()
                 self.recv_sock.close()
                 os._exit(0)
         except:
-            print 'Error happens when trying to exit the client!'
+            print 'Error happened when trying to exit the client!'
             os._exit(0)
 
-    # -------------- override default function: will be invoked if inputting invalid command -------------- #
+    # -------------- override default function------------------------------------------- #
     def default(self, line):
         print '<----------------------- Commands supported ----------------------->'
         print '1. list: List all online users'
@@ -498,9 +485,9 @@ if __name__ == '__main__':
     # server_ip = config.get('server_info', 'ip')
     server_ip = Crypto.get_local_ip()
     server_port = config.getint('server_info', 'port')
-    server_pub_key = config.get('server_info', 'pub_key')
+    server_public_key = config.get('server_info', 'public_key')
 
     # initialize the client
-    client = Client(server_ip, server_port, server_pub_key)
+    client = Client(server_ip, server_port, server_public_key)
     # connect the client to the chat server
     client.run()
