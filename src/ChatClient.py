@@ -16,6 +16,7 @@ from MessageDetails import LINE_SEPARATOR, MessageStatus, AuthMsg, MAX_BUFFER_SI
 MAX_LOGIN_ATTEMPTS = 3
 CMD_PROMPT = '>> '
 MSG_PROMPT = '<< '
+ERROR_PROMPT = 'ERROR: '
 
 
 # ########################### Client UserInfo Class ######################### #
@@ -75,8 +76,8 @@ class Client(cmd.Cmd):
                 client.prompt = self.user_name + CMD_PROMPT
                 client.cmdloop('<' + user_name + '> successfully logged in')
         if not loggedIn:
-            print 'Exceeded the maximum login attempts, exiting the program.'
-            print 'Please try again later!'
+            print ERROR_PROMPT + 'Exceeded the maximum login attempts, exiting the program.'
+            print ERROR_PROMPT + 'Please try again later!'
             self.recv_sock.close()
             os._exit(0)
 
@@ -103,11 +104,11 @@ class Client(cmd.Cmd):
             if isAuthenticationComplete and self.end_authentication(n2):
                 log_result = True
         except socket.error:
-            print 'Cannot connect to the server to authenticate, exiting the program!'
+            print ERROR_PROMPT + 'Cannot connect to the server to authenticate, exiting the program!'
             os._exit(0)
         except Exception as e:
             print e
-            print 'Unknown error happens when trying to login: ', sys.exc_info()[0], ', please retry!'
+            print ERROR_PROMPT + 'Unknown error happens when trying to login: ', sys.exc_info()[0], ', please retry!'
         finally:
             if not log_result:
                 self.client_sock.close()
@@ -241,7 +242,7 @@ class Client(cmd.Cmd):
             self.recv_sock.bind((self.client_ip, self.client_port))
             threading.Thread(target=self.start_listening).start()
         except socket.error:
-            print 'Failed to start the socket for receiving messages'
+            print ERROR_PROMPT + 'Failed to start the socket for receiving messages'
 
     # ########################### Target function for each client Thread ######################### #
     def start_listening(self):
@@ -254,7 +255,7 @@ class Client(cmd.Cmd):
             msg_type = msg['type']
             msg_from_client = pickle.loads(fcrypt.asymmetric_decryption(self.rsa_pri_key, msg['data']))
             if not fcrypt.verify_timestamp(msg_from_client.timestamp):
-                print 'Timestamp of the message from another user is invalid'
+                print ERROR_PROMPT + 'Timestamp of the message from another user is invalid'
                 continue
             if msg_type == MessageStatus.START_CONN:
                 self.start_connection(msg_from_client)
@@ -351,8 +352,8 @@ class Client(cmd.Cmd):
 
     # ######################## try to re-login if something went wrong in server ###################### #
     def retry_login(self):
-        print 'Something went wrong at the server.'
-        print 'Please try to login again.'
+        print ERROR_PROMPT + 'Something went wrong at the server.'
+        print ERROR_PROMPT + 'Please try to login again.'
         self.client_sock.close()
         self.user_name = None
         self.rsa_pri_key, self.rsa_pub_key = fcrypt.generate_rsa_key_pair()
@@ -439,7 +440,7 @@ class Client(cmd.Cmd):
         except (socket.error, ValueError) as e:
             self.retry_login()
         except:
-            print 'Unknown error encountered while trying to get online user list from the server!'
+            print ERROR_PROMPT + 'Unknown error encountered while trying to get online user list from the server!'
 
     # ########################### send message to other clients ######################### #
     def do_send(self, arg):
@@ -452,11 +453,11 @@ class Client(cmd.Cmd):
                 receiver_name = ''
                 msg = ''
             if receiver_name == self.user_name:
-                print 'You cannot send message to yourself.'
-                print 'Please choose another user to send a message.'
+                print ERROR_PROMPT + 'You cannot send messages to yourself.'
+                print ERROR_PROMPT + 'Please choose another user to send a message.'
             elif receiver_name not in self.online_list:
-                print 'User not in client list.'
-                print 'Try using "list" command to update the online client list.'
+                print ERROR_PROMPT + 'User not in client list.'
+                print ERROR_PROMPT + 'Try using "list" command to update the online client list.'
             else:
                 destination_info = self.online_list[receiver_name]
                 # if we don't know the receiver's user information
@@ -473,11 +474,11 @@ class Client(cmd.Cmd):
                     self.create_msg(msg, destination_info)
                 # otherwise we cannot send message to the user
                 else:
-                    print 'Cannot send message to the client because it is not online.'
+                    print ERROR_PROMPT + 'Cannot send message to the client because it is not online.'
         except (socket.error, ValueError) as e:
             self.retry_login()
         except:
-            print 'Unknown error encountered while trying to send message to another user!'
+            print ERROR_PROMPT + 'Unknown error encountered while trying to send message to another user!'
 
     # ########################### logout the user and exit the program ######################### #
     def do_logout(self, arg):
@@ -489,7 +490,7 @@ class Client(cmd.Cmd):
                 self.recv_sock.close()
                 os._exit(0)
         except:
-            print 'Error encountered while trying to exit the client!'
+            print ERROR_PROMPT + 'Error encountered while trying to exit the client!'
             os._exit(0)
 
     # ##### Shortcuts #####- #
@@ -500,6 +501,7 @@ class Client(cmd.Cmd):
 
     # ############## override default function: will be invoked if inputting invalid command ############### #
     def default(self, line):
+        print ERROR_PROMPT
         print '<-###################### Commands supported ######################->'
         print '1. list: List all online users'
         print '2. send <username> <message>: Send message to another online user'
