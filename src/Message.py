@@ -4,7 +4,7 @@ MAX_BUFFER_SIZE = 65536
 
 MAX_TIMESTAMP_GAP = 10
 
-# --------------------------- Authentication Message Class ------------------------- #
+# --------------------------- Client - Server Authentication Message Class ------------------------- #
 class AuthMsg(object):
     def __init__(self, solved_challenge, user_name,  password, rsa_pub_key, dh_pub_key, ip, port, n1, n2 ):
         self.solved_challenge = solved_challenge
@@ -17,12 +17,13 @@ class AuthMsg(object):
         self.n1 = n1
         self.n2 = n2
 
+# --------------------------- User List Result Class ------------------------- #
 class UserListRes(object):
     def __init__(self, user_names, timestamp=None):
         self.user_names = user_names
         self.timestamp = timestamp
 
-
+# --------------------------- User Info Result Class ------------------------- #
 class UserInfoRes(object):
     def __init__(self, ip, port, sec_key, ticket, ticket_signature, public_key, timestamp=None):
         self.ip = ip
@@ -33,7 +34,7 @@ class UserInfoRes(object):
         self.public_key = public_key
         self.timestamp = timestamp
 
-
+# --------------------------- Client - Client Connection Start Message Class ------------------------- #
 class ConnStartMsg(object):
     def __init__(self, user_name, ip, port, public_key, ticket, ticket_signature, n3, timestamp):
         self.user_name = user_name
@@ -45,7 +46,7 @@ class ConnStartMsg(object):
         self.n3 = n3
         self.timestamp = timestamp
 
-
+# --------------------------- Client - Client Connection Message Class ------------------------- #
 class ConnMsg(object):
     def __init__(self, user_name, iv, tag, encrypted_n3, n4, encrypted_n4, timestamp):
         self.user_name = user_name
@@ -66,18 +67,19 @@ class TextMsg(object):
         self.msg_signature = msg_signature
         self.timestamp = timestamp
 
-
+# --------------------------- Client - Client Disonnect Message Class ------------------------- #
 class DisconnMsg(object):
     def __init__(self, user_name, timestamp):
         self.user_name = user_name
         self.timestamp = timestamp
 
-
+# --------------------------- Logout Result Class ------------------------- #
 class LogoutRes(object):
     def __init__(self, result, timestamp=None):
         self.result = result
         self.timestamp = timestamp
 
+# --------------------------- Different Message Status Class ------------------------- #
 class MessageStatus(object):
     INIT = 'INIT'
     START_AUTH = 'START_AUTH'
