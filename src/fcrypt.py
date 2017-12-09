@@ -98,7 +98,7 @@ def asymmetric_decryption(private_key, encrypted_msg):
             start += encrypted_seg_size
         return plain_text
     except (TypeError, ValueError):
-        print 'failed to decrypt the text asymmetrically, exit the program!'
+        print 'Failed to decrypt the text asymmetrically, exit the program!'
         exit(-1)
 
 

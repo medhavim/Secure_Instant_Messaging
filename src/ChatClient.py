@@ -173,7 +173,8 @@ class Client(cmd.Cmd):
                                 decrypted_server_auth_response.n1, decrypted_server_auth_response.n2
         if str(expected_n1) != str(n1):
             return False, None, None
-        shared_dh_key = fcrypt.generate_shared_dh_key(self.dh_pri_key, fcrypt.deserialize_pub_key(server_dh_key))
+        shared_dh_key = fcrypt.generate_shared_dh_key(self.dh_pri_key,
+                                                      fcrypt.deserialize_pub_key(server_dh_key))
         return True, shared_dh_key, str(n2)
 
     # ########################### Finish client - server authentication ######################### #
@@ -192,13 +193,15 @@ class Client(cmd.Cmd):
             return False
 
     # ########################### send message to server to get other client info ######################### #
+    # Sending client
     def get_user_details(self, user_name):
         self.send_encrypted_data_to_server(MessageStatus.TICKET_TO_USER, user_name)
         isResultValid, user_info = self.receive_encrypted_data_from_server()
         if isResultValid:
             user_dict = self.online_list[user_name]
             user_dict.address = (user_info.ip, user_info.port)
-            user_dict.sec_key = user_info.sec_key
+            user_dict.sec_key = fcrypt.generate_shared_dh_key(self.dh_pri_key,
+                                                              fcrypt.deserialize_pub_key(user_info.dh_pub_key))
             user_dict.public_key = fcrypt.deserialize_pub_key(user_info.public_key)
             user_dict.ticket = user_info.ticket
             user_dict.iv = user_info.iv
@@ -207,6 +210,7 @@ class Client(cmd.Cmd):
             user_dict.info_known = True
 
     # ########################### establish connection with another user ######################### #
+    # Sending client
     def connect_to_client(self, target_client_info):
         # start authentication process
         target_client_info.n3 = fcrypt.generate_nonce()
@@ -248,7 +252,7 @@ class Client(cmd.Cmd):
         except socket.error:
             print ERROR_PROMPT + 'Failed to start the socket for receiving messages'
 
-    # ########################### Target function for each client Thread ######################### #
+    # ########################### Target function for each target client Thread ######################### #
     def start_listening(self):
         while True:
             # Wait for Client response
@@ -273,6 +277,7 @@ class Client(cmd.Cmd):
                 self.decrypt_msg_from_client(msg_from_client)
 
     # ########################### Start the Client - Client connection ######################### #
+    # target client
     def start_connection(self, msg_received):
         tag = msg_received.tag
         iv_from_user = msg_received.iv
@@ -280,13 +285,15 @@ class Client(cmd.Cmd):
         ticket_signature = msg_received.ticket_signature
         if not fcrypt.verify_signature(self.server_pub_key, ticket, ticket_signature):
             return
-        user_name_in_ticket, session_key_in_ticket, timestamp_to_expire = ticket.split(SPACE_SEPARATOR)
+        user_name_in_ticket, dh_pub_key_in_ticket, timestamp_to_expire = ticket.split(SPACE_SEPARATOR)
         if user_name_in_ticket != msg_received.user_name or float(timestamp_to_expire) < time.time():
             return
         received_from_user = UserInfo()
         received_from_user.address = (msg_received.ip, msg_received.port)
         received_from_user.public_key = fcrypt.deserialize_pub_key(msg_received.public_key)
-        received_from_user.sec_key = session_key_in_ticket
+        # received_from_user.sec_key = session_key_in_ticket
+        received_from_user.sec_key = fcrypt.generate_shared_dh_key(self.dh_pri_key,
+                                                                   fcrypt.deserialize_pub_key(dh_pub_key_in_ticket))
         received_from_user.info_known = True
         self.online_list[msg_received.user_name] = received_from_user
         # send connection back message to the initiator
@@ -508,7 +515,6 @@ class Client(cmd.Cmd):
 
     do_l = do_list
     do_s = do_send
-
 
     # ############## override default function: will be invoked if inputting invalid command ############### #
     def default(self, line):

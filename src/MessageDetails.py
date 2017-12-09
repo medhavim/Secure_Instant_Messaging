@@ -10,6 +10,7 @@ DEBUG_PROMPT = '[DEBUG] '
 CMD_PROMPT = '>> '
 MSG_PROMPT = '<< '
 
+
 # ########################### Client - Server Authentication Message Class ######################## #
 class AuthMsg(object):
     def __init__(self, solved_challenge, user_name,  password, rsa_pub_key, dh_pub_key, ip, port, n1, n2 ):
@@ -33,10 +34,10 @@ class UserListRes(object):
 
 # ########################### User Info Result Class ######################## #
 class UserInfoRes(object):
-    def __init__(self, ip, port, sec_key, ticket, iv, tag, ticket_signature, public_key, timestamp=None):
+    def __init__(self, ip, port, dh_pub_key, ticket, iv, tag, ticket_signature, public_key, timestamp=None):
         self.ip = ip
         self.port = port
-        self.sec_key = sec_key
+        self.dh_pub_key = dh_pub_key
         self.ticket = ticket
         self.iv = iv
         self.tag = tag

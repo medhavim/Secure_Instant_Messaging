@@ -27,6 +27,7 @@ class UserInfo:
         self.challenge = challenge
         self.rsa_pub_key = None
         self.secret_key = None
+        self.dh_pub_key = None
         self.user_name = ''
         self.ip = ''
         self.port = ''
@@ -68,15 +69,15 @@ class Server:
         challenge = response_from_client.solved_challenge
         # check if the response given to the challenge is correct
         if challenge != self.users_loggedin[client_address].challenge:
-            return False, ERROR_PROMPT + 'Response to the given challenge is incorrect!'
+            return False, (ERROR_PROMPT + 'Response to the given challenge is incorrect!')
         user_name = response_from_client.user_name
         # the same user cannot login twice
         user_dict = self.find_user_by_name(user_name)
         if user_dict is not None and user_dict.state == UserState.AUTHENTICATED:
-            return False, ERROR_PROMPT + 'User is already logged in, please logout and retry!'
+            return False, (ERROR_PROMPT + 'User is already logged in, please logout and retry!')
         password = response_from_client.password
         if not self.check_password(user_name, password):
-            return False, ERROR_PROMPT + 'The user name or password is wrong!'
+            return False, (ERROR_PROMPT + 'The user name or password is wrong!')
         # set user information
         current_user = self.users_loggedin[client_address]
         current_user.user_name = response_from_client.user_name
@@ -86,13 +87,16 @@ class Server:
         current_user.state = UserState.VERIFIED
         # DH key exchange
         dh_pri_key, dh_pub_key = fcrypt.generate_dh_key_pair()
+        current_user.dh_pub_key = fcrypt.deserialize_pub_key(response_from_client.dh_pub_key)
         current_user.secret_key = fcrypt.generate_shared_dh_key(dh_pri_key,
                                                                 fcrypt.deserialize_pub_key(response_from_client.dh_pub_key))
         # compose response message
         n1 = response_from_client.n1
         n2 = fcrypt.generate_nonce(32)
         current_user.temp_nonce = n2
+
         serialized_dh_pub_key = fcrypt.serialize_pub_key(dh_pub_key)
+
         response_to_client = pickle.dumps(AuthMsg('','','','',serialized_dh_pub_key,'','',n1, n2),
                                           pickle.HIGHEST_PROTOCOL)
         encrypted_response_to_client = fcrypt.asymmetric_encryption(current_user.rsa_pub_key, response_to_client)
@@ -134,19 +138,24 @@ class Server:
             return
         target_user_info = self.find_user_by_name(target_user_name)
         if target_user_info is not None:
-            key_between_client = base64.b64encode(os.urandom(32))
+            # key_between_client = base64.b64encode(os.urandom(32))
             timestamp_to_expire = time.time() + 1000
             ticket = request_user_info.user_name + SPACE_SEPARATOR + \
-                     key_between_client + SPACE_SEPARATOR +\
+                     fcrypt.serialize_pub_key(request_user_info.dh_pub_key) + SPACE_SEPARATOR + \
                      str(timestamp_to_expire)
+
             ticket_signature = fcrypt.sign(self.private_key, ticket)
+
             target_pubkey = target_user_info.rsa_pub_key
+            target_dhpubkey = target_user_info.dh_pub_key
+
             iv = base64.b64encode(os.urandom(16))
+
             encrypted_ticket, tag = fcrypt.symmetric_encryption(target_user_info.secret_key, iv, ticket)
             user_info_msg = UserInfoRes(
                 target_user_info.ip,
                 target_user_info.port,
-                key_between_client,
+                fcrypt.serialize_pub_key(target_dhpubkey),
                 encrypted_ticket,
                 iv,
                 tag,
