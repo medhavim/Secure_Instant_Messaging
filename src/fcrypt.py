@@ -98,7 +98,7 @@ def asymmetric_decryption(private_key, encrypted_msg):
             start += encrypted_seg_size
         return plain_text
     except (TypeError, ValueError):
-        print 'Failed to decrypt the text asymmetrically, exit the program!'
+        print MessageDetails.ERROR_PROMPT + 'Failed to decrypt the text asymmetrically, exit the program!'
         exit(-1)
 
 # ########################### Verify Signature ################# #
@@ -123,7 +123,7 @@ def verify_signature(public_key, message, signature):
 def verify_timestamp(timestamp):
     cur_time = time.time()
     if cur_time - float(timestamp) > MessageDetails.MAX_TIMESTAMP_GAP:
-        print 'Gap between timestamp is too large, invalid message!'
+        print MessageDetails.ERROR_PROMPT + 'Gap between timestamp is too large, invalid message!'
         return False
     return True
 

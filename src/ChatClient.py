@@ -95,8 +95,7 @@ class Client(cmd.Cmd):
             # Step 2: start the authentication with the server
             # Send the solved challenge along with A's identity to authenticate to the server
             n1, server_auth_response = self.start_authentication(solved_challenge, user_name, password)
-            if "wrong" in json.loads(server_auth_response)['data']:
-                print "Password wrong. Please try again!"
+
             isAuthenticationComplete, self.shared_dh_key, n2 = self.get_server_shared_key(n1, server_auth_response)
 
             # Step 3: Establish the shared key and finish logging in the user
@@ -166,7 +165,9 @@ class Client(cmd.Cmd):
     def get_server_shared_key(self, expected_n1, server_auth_response):
         msg = json.loads(server_auth_response)
         msg_type = msg['type']
+        data = msg['data']
         if msg_type == MessageStatus.INVALID_RES:
+            print data
             return False, None, None
         decrypted_server_auth_response = pickle.loads(fcrypt.asymmetric_decryption(self.rsa_pri_key, msg['data']))
         server_dh_key, n1, n2 = decrypted_server_auth_response.dh_pub_key, \

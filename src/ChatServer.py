@@ -69,15 +69,15 @@ class Server:
         challenge = response_from_client.solved_challenge
         # check if the response given to the challenge is correct
         if challenge != self.users_loggedin[client_address].challenge:
-            return False, (ERROR_PROMPT + 'Response to the given challenge is incorrect!')
+            return False, ERROR_PROMPT + 'Response to the given challenge is incorrect!'
         user_name = response_from_client.user_name
         # the same user cannot login twice
         user_dict = self.find_user_by_name(user_name)
         if user_dict is not None and user_dict.state == UserState.AUTHENTICATED:
-            return False, (ERROR_PROMPT + 'User is already logged in, please logout and retry!')
+            return False, ERROR_PROMPT + 'User is already logged in, please logout and retry!'
         password = response_from_client.password
         if not self.check_password(user_name, password):
-            return False, (ERROR_PROMPT + 'The user name or password is wrong!')
+            return False, ERROR_PROMPT + 'The user name or password is wrong!'
         # set user information
         current_user = self.users_loggedin[client_address]
         current_user.user_name = response_from_client.user_name
@@ -166,7 +166,7 @@ class Server:
         else:
             msg=dict()
             msg['type'] = MessageStatus.INVALID_RES
-            msg['data'] = ERROR_PROMPT + 'The user <' + target_user_name + '> is offline!'
+            msg['data'] = 'The user <' + target_user_name + '> is offline!'
             connection.sendall(json.dumps(msg))
 
     # ########################### Get user info by user name ######################## #
@@ -189,7 +189,7 @@ class Server:
         else:
             msg = dict()
             msg['type'] = MessageStatus.INVALID_RES
-            msg['data'] = ERROR_PROMPT + 'Trying to logout an offline user!'
+            msg['data'] = 'Trying to logout an offline user!'
             connection.sendall(json.dumps(msg))
 
     # ############ Common function using symmetric encryption to send back message to client ############## #
@@ -218,7 +218,7 @@ class Server:
         if not fcrypt.verify_timestamp(timestamp):
             msg = dict()
             msg['type'] = MessageStatus.INVALID_RES
-            msg['data'] = ERROR_PROMPT + 'Gap between timestamp is too large, invalid message!'
+            msg['data'] = 'Gap between timestamp is too large, invalid message!'
             connection.sendall(json.dumps(msg))
             return False
         return True
