@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from MessageDetails import LINE_SEPARATOR, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ERROR_PROMPT, CMD_PROMPT, MSG_PROMPT, \
-    MAX_LOGIN_ATTEMPTS, MessageStatus, AuthMsg, ConnMsg, ConnStartMsg, TextMsg, DisConnMsg
+    MAX_LOGIN_ATTEMPTS, MessageStatus, AuthMsg, ConnMsg, ConnStartMsg, TextMsg, DisConnMsg, AuthVerify
 
 
 # ########################### Client UserInfo Class ######################### #
@@ -169,7 +169,7 @@ class Client(cmd.Cmd):
         if msg_type == MessageStatus.INVALID_RES:
             print data
             return False, None, None
-        decrypted_server_auth_response = pickle.loads(fcrypt.asymmetric_decryption(self.rsa_pri_key, msg['data']))
+        decrypted_server_auth_response = pickle.loads(fcrypt.asymmetric_decryption(self.rsa_pri_key, data))
         server_dh_key, n1, n2 = decrypted_server_auth_response.dh_pub_key, \
                                 decrypted_server_auth_response.n1, decrypted_server_auth_response.n2
         if str(expected_n1) != str(n1):
@@ -181,14 +181,18 @@ class Client(cmd.Cmd):
     # ########################### Finish client - server authentication ######################### #
     def end_authentication(self, n2):
         iv = base64.b64encode(os.urandom(16))
-        encrypted_n2, tag = fcrypt.symmetric_encryption(self.shared_dh_key, iv, n2)
+        n3 = fcrypt.generate_nonce(32)
+        response_to_client = pickle.dumps(AuthVerify(n2, n3),
+                                          pickle.HIGHEST_PROTOCOL)
+        encrypted_response_to_client, tag = fcrypt.symmetric_encryption(self.shared_dh_key, iv, response_to_client)
         msg = dict()
         msg['type'] = MessageStatus.END_AUTH
         msg['data'] = fcrypt.asymmetric_encryption(self.server_pub_key, iv) + LINE_SEPARATOR + \
-                      fcrypt.asymmetric_encryption(self.server_pub_key, tag) + LINE_SEPARATOR + encrypted_n2
+                      fcrypt.asymmetric_encryption(self.server_pub_key, tag) + LINE_SEPARATOR + \
+                      encrypted_response_to_client
         self.client_sock.sendall(json.dumps(msg))
         isResultValid, decrypted_nonce_res = self.receive_encrypted_data_from_server(False)
-        if isResultValid and long(decrypted_nonce_res) == long(n2) + 1:
+        if isResultValid and long(decrypted_nonce_res) == long(n3) + 1:
             return True
         else:
             return False

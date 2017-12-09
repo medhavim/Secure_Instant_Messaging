@@ -113,14 +113,14 @@ class Server:
 
     def client_handler_for_auth_end(self, client_address, data):
         user_dict = self.users_loggedin[client_address]
-        iv, tag, encrypted_n2 = data.split(LINE_SEPARATOR)
-        received_n2 = fcrypt.symmetric_decryption(user_dict.secret_key,
+        iv, tag, encrypted_response_to_client = data.split(LINE_SEPARATOR)
+        received_response_to_client = pickle.loads(fcrypt.symmetric_decryption(user_dict.secret_key,
                                                   fcrypt.asymmetric_decryption(self.private_key, iv),
                                                   fcrypt.asymmetric_decryption(self.private_key, tag),
-                                                  encrypted_n2)
-        if received_n2 != str(user_dict.temp_nonce):
+                                                  encrypted_response_to_client))
+        if received_response_to_client.n2 != str(user_dict.temp_nonce):
             return False, ERROR_PROMPT + 'The nonce encrypted with the session key is wrong!'
-        end_response_to_client = str(long(received_n2) + 1)
+        end_response_to_client = str(long(received_response_to_client.n3) + 1)
         return True, end_response_to_client
 
     # ########################### sending all logged in users to authenticated clients ########################### #

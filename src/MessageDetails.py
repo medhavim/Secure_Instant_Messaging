@@ -98,6 +98,12 @@ class LogoutRes(object):
         self.timestamp = timestamp
 
 
+class AuthVerify(object):
+    def __init__(self, n2, n3):
+        self.n2 = n2
+        self.n3 = n3
+
+
 # ########################### Different Message Status Class ######################## #
 class MessageStatus(object):
     INIT = 'INIT'
