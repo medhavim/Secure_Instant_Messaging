@@ -534,7 +534,7 @@ class Client(cmd.Cmd):
 # ############## Main Function ###################### #
 if __name__ == '__main__':
     config = ConfigParser.RawConfigParser()
-    config.read('configuration/server.cfg')
+    config.read('configuration/conf.cfg')
     server_ip = config.get('info', 'hostname')
     server_port = config.getint('info', 'port')
     server_public_key = config.get('info', 'public_key')

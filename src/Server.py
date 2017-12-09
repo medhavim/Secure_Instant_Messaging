@@ -338,12 +338,12 @@ class Server:
 if __name__ == '__main__':
     # Reading the server from config file and starting a socket using that port
     config = ConfigParser.RawConfigParser()
-    config.read('configuration/server.cfg')
+    config.read('configuration/conf.cfg')
     port_num = config.getint('info', 'port')
     pri_key = config.get('info', 'private_key')
     user_creds = config.get('info', 'user_creds')
     host_name = fcrypt.get_local_ip()  # get local ip address by trying to connect to the DNS of google
-    opentxt = open('configuration/server.cfg','w')
+    opentxt = open('configuration/conf.cfg','w')
     config.set('info', 'hostname', host_name)
     config.write(opentxt)
     opentxt.close()
