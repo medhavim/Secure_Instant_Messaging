@@ -13,7 +13,7 @@ from cryptography.exceptions import InvalidSignature
 
 
 # ########################### Generate RSA key pair for each new client login ################# #
-def generate_rsa_key_pair(public_exponent=65537, key_size=1024):
+def generate_rsa_key_pair(public_exponent=65537, key_size=2048):
     rsa_private_key = rsa.generate_private_key(
         public_exponent=public_exponent,
         key_size=key_size,
@@ -73,6 +73,7 @@ def asymmetric_encryption(public_key, message):
                 mgf=asymmetric_padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA1(),
                 label=None))
+        # print len(base64.b64encode(seg_cipher_text))
         cipher_text += base64.b64encode(seg_cipher_text)
         start += seg_size
     return cipher_text
@@ -80,8 +81,7 @@ def asymmetric_encryption(public_key, message):
 
 # ########################### Asymmetric Dencryption################# #
 def asymmetric_decryption(private_key, encrypted_msg):
-    key_size = private_key.key_size
-    encrypted_seg_size = (key_size / 8 - 42) * 2
+    encrypted_seg_size = 344
     plain_text = ''
     encrypted_msg_size = len(encrypted_msg)
     start = 0
@@ -100,7 +100,6 @@ def asymmetric_decryption(private_key, encrypted_msg):
     except (TypeError, ValueError):
         print 'Failed to decrypt the text asymmetrically, exit the program!'
         exit(-1)
-
 
 # ########################### Verify Signature ################# #
 # verify the sign with private key, and return the result
