@@ -26,14 +26,14 @@ class AuthMsg(object):
 
 
 # ########################### User List Result Class ######################## #
-class UserListRes(object):
+class ListRes(object):
     def __init__(self, user_names, timestamp=None):
         self.user_names = user_names
         self.timestamp = timestamp
 
 
 # ########################### User Info Result Class ######################## #
-class UserInfoRes(object):
+class InfoRes(object):
     def __init__(self, ip, port, dh_pub_key, ticket, iv, tag, ticket_signature, public_key, timestamp=None):
         self.ip = ip
         self.port = port
@@ -47,8 +47,9 @@ class UserInfoRes(object):
 
 
 # ########################### Client - Client Connection Start Message Class ######################## #
-class ConnStartMsg(object):
-    def __init__(self, user_name, ip, port, public_key, ticket, iv, tag, ticket_signature, n3, timestamp):
+class ConnMsg(object):
+    def __init__(self, user_name, ip, port, public_key, ticket, iv, tag, ticket_signature, n3,
+                 encrypted_n3, n4, encrypted_n4, timestamp):
         self.user_name = user_name
         self.ip = ip
         self.port = port
@@ -58,15 +59,6 @@ class ConnStartMsg(object):
         self.tag = tag
         self.ticket_signature = ticket_signature
         self.n3 = n3
-        self.timestamp = timestamp
-
-
-# ########################### Client - Client Connection Message Class ######################## #
-class ConnMsg(object):
-    def __init__(self, user_name, iv, tag, encrypted_n3, n4, encrypted_n4, timestamp):
-        self.user_name = user_name
-        self.iv = iv
-        self.tag = tag
         self.encrypted_n3 = encrypted_n3
         self.n4 = n4
         self.encrypted_n4 = encrypted_n4
@@ -74,7 +66,7 @@ class ConnMsg(object):
 
 
 # ########################### Text Message Class ######################## #
-class TextMsg(object):
+class Text(object):
     def __init__(self, user_name, iv, tag, encrypted_msg, msg_signature, timestamp):
         self.user_name = user_name
         self.iv = iv
@@ -85,14 +77,14 @@ class TextMsg(object):
 
 
 # ########################### Client - Client Disonnect Message Class ######################## #
-class DisConnMsg(object):
+class Disconnect(object):
     def __init__(self, user_name, timestamp):
         self.user_name = user_name
         self.timestamp = timestamp
 
 
 # ########################### Logout Result Class ######################## #
-class LogoutRes(object):
+class Logout(object):
     def __init__(self, result, timestamp=None):
         self.result = result
         self.timestamp = timestamp

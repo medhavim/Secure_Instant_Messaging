@@ -9,7 +9,7 @@ import socket
 import threading
 import time
 import traceback
-from MessageDetails import MessageStatus, AuthMsg, UserListRes, UserInfoRes, LogoutRes, \
+from MessageDetails import MessageStatus, AuthMsg, ListRes, InfoRes, Logout, \
     LINE_SEPARATOR, SPACE_SEPARATOR, MAX_BUFFER_SIZE, ERROR_PROMPT, DEBUG_PROMPT
 
 
@@ -128,7 +128,7 @@ class Server:
         list_flag, list_send_time = received_list_message.split(LINE_SEPARATOR)
         if self.validate_timestamp_in_req(connection, list_send_time):
             current_user_names = SPACE_SEPARATOR.join(user.user_name for client_addr, user in self.users_loggedin.iteritems())
-            user_list_res = UserListRes(current_user_names)
+            user_list_res = ListRes(current_user_names)
             self.send_encrypted_data_to_client(connection, request_user_info, user_list_res)
 
     # ########################### send ticket to other clients for client-to-client authentication################# #
@@ -152,7 +152,7 @@ class Server:
             iv = base64.b64encode(os.urandom(16))
 
             encrypted_ticket, tag = fcrypt.symmetric_encryption(target_user_info.secret_key, iv, ticket)
-            user_info_msg = UserInfoRes(
+            user_info_msg = InfoRes(
                 target_user_info.ip,
                 target_user_info.port,
                 fcrypt.serialize_pub_key(target_dhpubkey),
@@ -184,7 +184,7 @@ class Server:
             return
         if client_address in self.users_loggedin:
             del self.users_loggedin[client_address]
-            logout_res = LogoutRes('OK')
+            logout_res = Logout('OK')
             self.send_encrypted_data_to_client(connection, request_user_info, logout_res)
         else:
             msg = dict()

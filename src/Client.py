@@ -11,7 +11,8 @@ import sys
 import threading
 import time
 from MessageDetails import LINE_SEPARATOR, MAX_BUFFER_SIZE, SPACE_SEPARATOR, ERROR_PROMPT, CMD_PROMPT, MSG_PROMPT, \
-    MAX_LOGIN_ATTEMPTS, MessageStatus, AuthMsg, ConnMsg, ConnStartMsg, TextMsg, DisConnMsg, AuthVerify
+    MAX_LOGIN_ATTEMPTS, MessageStatus, AuthMsg, ConnMsg, Text, Disconnect, AuthVerify
+
 
 
 # ########################### Client UserInfo Class ######################### #
@@ -219,7 +220,7 @@ class Client(cmd.Cmd):
     def connect_to_client(self, target_client_info):
         # start authentication process
         target_client_info.n3 = fcrypt.generate_nonce()
-        msg = ConnStartMsg(
+        msg = ConnMsg(
             self.user_name,
             self.client_ip,
             self.client_port,
@@ -229,6 +230,9 @@ class Client(cmd.Cmd):
             target_client_info.tag,
             target_client_info.ticket_signature,
             target_client_info.n3,
+            '',
+            '',
+            '',
             time.time()
         )
         self.send_encrypted_data_to_client(target_client_info, MessageStatus.START_CONN, msg)
@@ -237,7 +241,7 @@ class Client(cmd.Cmd):
     def create_msg(self, msg, target_info):
         iv = base64.b64encode(os.urandom(16))
         sec_key = target_info.sec_key
-        msg = TextMsg(
+        msg = Text(
             self.user_name,
             fcrypt.asymmetric_encryption(target_info.public_key, iv),
             fcrypt.asymmetric_encryption(target_info.public_key, fcrypt.symmetric_encryption(sec_key, iv, msg)[1]),
@@ -307,8 +311,14 @@ class Client(cmd.Cmd):
         iv = base64.b64encode(os.urandom(16))
         response_msg = ConnMsg(
             self.user_name,
+            '',
+            '',
+            '',
+            '',
             iv,
             fcrypt.symmetric_encryption(received_from_user.sec_key, iv, str(n3))[1],
+            '',
+            '',
             fcrypt.symmetric_encryption(received_from_user.sec_key, iv, str(n3))[0],
             received_from_user.n4,
             '',
@@ -327,8 +337,14 @@ class Client(cmd.Cmd):
             iv = base64.b64encode(os.urandom(16))
             response_to_client = ConnMsg(
                 self.user_name,
+                '',
+                '',
+                '',
+                '',
                 iv,
                 fcrypt.symmetric_encryption(user_dict.sec_key, iv, str(msg_received.n4))[1],
+                '',
+                '',
                 '',
                 '',
                 fcrypt.symmetric_encryption(user_dict.sec_key, iv, str(msg_received.n4))[0],
@@ -439,7 +455,7 @@ class Client(cmd.Cmd):
         for user_name, user_dict in self.online_list.iteritems():
             if user_dict.connected:
                 print 'Disconnecting with <' + user_name + '>'
-                disconnect_msg = DisConnMsg(self.user_name, time.time())
+                disconnect_msg = Disconnect(self.user_name, time.time())
                 self.send_encrypted_data_to_client(user_dict, MessageStatus.DISCONNECT, disconnect_msg)
 
     # ########################## COMMAND LINE INTERACTIONS ############################# #
