@@ -95,6 +95,8 @@ class Client(cmd.Cmd):
             # Step 2: start the authentication with the server
             # Send the solved challenge along with A's identity to authenticate to the server
             n1, server_auth_response = self.start_authentication(solved_challenge, user_name, password)
+            if "wrong" in json.loads(server_auth_response)['data']:
+                print "Password wrong. Please try again!"
             isAuthenticationComplete, self.shared_dh_key, n2 = self.get_server_shared_key(n1, server_auth_response)
 
             # Step 3: Establish the shared key and finish logging in the user
